@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tuya Wizard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #212121;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 48px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .icon { font-size: 48px; margin-bottom: 24px; }
+    h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+    p { color: #757575; line-height: 1.6; margin-bottom: 24px; }
+    .badge {
+      display: inline-block;
+      background: #e3f2fd;
+      color: #1565c0;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #121212; color: #e0e0e0; }
+      .card { background: #1e1e1e; box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
+      p { color: #9e9e9e; }
+      .badge { background: #1a237e; color: #90caf9; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🧩</div>
+    <h1>Tuya Wizard</h1>
+    <p>
+      The UI for Tuya Wizard is under construction.<br />
+      The backend API is fully operational — devices can be discovered
+      and provisioned via the REST endpoints below.
+    </p>
+    <ul style="text-align:left; color:#757575; font-size:13px; line-height:2; margin-bottom:24px; list-style:none; padding:0;">
+      <li><code>POST /api/tuya_wizard/discover</code> — discover devices</li>
+      <li><code>GET  /api/tuya_wizard/devices</code> — list provisioned</li>
+      <li><code>POST /api/tuya_wizard/provision</code> — add to LocalTuya</li>
+      <li><code>POST /api/tuya_wizard/remove</code> — remove device</li>
+      <li><code>GET  /api/tuya_wizard/card_templates</code> — card templates</li>
+    </ul>
+    <span class="badge">v0.1.0 — coming soon</span>
+  </div>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "domain": "tuya_wizard",
+  "name": "Tuya Wizard",
+  "version": "0.1.0",
+  "documentation": "https://github.com/felipearmat/tuya-wizard",
+  "requirements": ["tinytuya>=1.15.0"],
+  "dependencies": ["frontend"],
+  "codeowners": ["@felipearmat"],
+  "iot_class": "local_push",
+  "config_flow": true
+}

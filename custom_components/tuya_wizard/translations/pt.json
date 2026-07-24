@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tuya Wizard",
+        "description": "Configure suas credenciais da Tuya IoT Platform.",
+        "data": {
+          "tuya_access_id": "Client ID",
+          "tuya_access_secret": "Client Secret",
+          "tuya_region": "Região"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "O Tuya Wizard já está configurado."
+    }
+  }
+}
