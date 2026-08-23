@@ -145,15 +145,24 @@ def _build_creds(data: dict) -> TuyaCredentials | None:
 
 
 class TuyaWizardIndexView(HomeAssistantView):
+    """Serves the static wizard shell — no data, nothing to protect here.
+
+    This is loaded via an `iframe` sidebar panel, so the browser navigates
+    to it directly (no Authorization header, no session cookie HA would
+    recognize) — requiring auth here would make the panel unloadable. The
+    page's own JS reads the frontend's access token from localStorage
+    (same-origin, so the iframe can see it) and attaches it to every call
+    against the real data endpoints below, which all still require auth.
+    """
+
     url = "/api/tuya_wizard/"
     name = "api:tuya_wizard:index"
+    requires_auth = False
 
     def __init__(self, html: str) -> None:
         self._html = html
 
     async def get(self, request: web.Request) -> web.Response:
-        if (resp := _admin_required(request)) is not None:
-            return resp
         return web.Response(text=self._html, content_type="text/html", charset="utf-8")
 
 

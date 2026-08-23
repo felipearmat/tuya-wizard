@@ -143,7 +143,7 @@
 </head>
 <body>
 
-<div id="version-badge">Tuya Wizard v0.2.0</div>
+<div id="version-badge">Tuya Wizard v0.2.1</div>
 
 <div id="op-banner">
   <span class="spin">⏳</span>&nbsp;
@@ -277,6 +277,32 @@ let busy = false;
 
 const $ = id => document.getElementById(id);
 
+// The panel is an `iframe` sidebar panel — the browser navigates to it
+// directly, with no Authorization header and no cookie HA recognizes, so
+// every data call has to attach its own. The HA frontend stores its own
+// access token in localStorage under 'hassTokens'; since the iframe is
+// same-origin as the parent HA frontend, it can read the very same entry.
+function getHassToken() {
+  try {
+    const raw = localStorage.getItem('hassTokens');
+    if (!raw) return null;
+    return JSON.parse(raw).access_token || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function apiFetch(path, opts = {}) {
+  const token = getHassToken();
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const r = await fetch(`${API}${path}`, { ...opts, headers });
+  if (r.status === 401 || r.status === 403) {
+    throw new Error('Sessão do Home Assistant não encontrada ou expirada — recarregue esta página');
+  }
+  return r;
+}
+
 function setBusy(on, removeMode = false) {
   busy = on;
   $('op-banner').style.display = on ? 'block' : 'none';
@@ -306,7 +332,7 @@ function logClear(container = 'log') { $(container).innerHTML = ''; }
 
 async function loadConfig() {
   try {
-    const r = await fetch(`${API}/config`);
+    const r = await apiFetch('/config');
     if (!r.ok) return;
     const d = await r.json();
     if (d.tuya_access_id)         $('access-id').value = d.tuya_access_id;
@@ -317,7 +343,7 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
-  await fetch(`${API}/config`, {
+  await apiFetch('/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -407,7 +433,7 @@ async function doDiscover() {
   deviceOverrides = {};
 
   try {
-    const r = await fetch(`${API}/discover`, {
+    const r = await apiFetch('/discover', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -633,7 +659,7 @@ async function doProvision() {
   ticker.style.display = 'flex';
 
   try {
-    const r = await fetch(`${API}/provision`, {
+    const r = await apiFetch('/provision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -679,7 +705,7 @@ async function doProvision() {
 async function loadInstalled() {
   $('installed-list').innerHTML = '<p style="color:var(--text-dim);font-size:.85rem"><span class="spin">⏳</span> Carregando…</p>';
   try {
-    const r       = await fetch(`${API}/devices`);
+    const r       = await apiFetch('/devices');
     const devices = await r.json();
 
     if (!devices.length) {
@@ -719,7 +745,7 @@ async function doRemove(deviceId, name) {
   $('remove-ticker-label').textContent = `Removendo ${name}…`;
 
   try {
-    const r    = await fetch(`${API}/remove`, {
+    const r    = await apiFetch('/remove', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_id: deviceId }),
