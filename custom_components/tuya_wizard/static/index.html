@@ -1,66 +1,745 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tuya Wizard</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f5f5f5;
-      color: #212121;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 48px;
-      max-width: 480px;
-      width: 100%;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-      text-align: center;
-    }
-    .icon { font-size: 48px; margin-bottom: 24px; }
-    h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
-    p { color: #757575; line-height: 1.6; margin-bottom: 24px; }
-    .badge {
-      display: inline-block;
-      background: #e3f2fd;
-      color: #1565c0;
-      border-radius: 20px;
-      padding: 4px 14px;
-      font-size: 13px;
-      font-weight: 500;
-    }
-    @media (prefers-color-scheme: dark) {
-      body { background: #121212; color: #e0e0e0; }
-      .card { background: #1e1e1e; box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
-      p { color: #9e9e9e; }
-      .badge { background: #1a237e; color: #90caf9; }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tuya Wizard</title>
+<style>
+  :root {
+    --bg: #1a1a2e; --surface: #16213e; --card: #0f3460;
+    --accent: #e94560; --accent2: #4ecca3;
+    --text: #eaeaea; --text-dim: #a0a0b0;
+    --ok: #4ecca3; --err: #e94560; --warn: #f5a623;
+    --border: #2a2a4a; --radius: 8px; --font: 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  #version-badge {
+    position: fixed; top: 8px; left: 10px; z-index: 999;
+    font-size: 0.68rem; font-family: monospace; letter-spacing: .03em;
+    color: var(--text-dim); opacity: .55; pointer-events: none; user-select: none;
+  }
+  #op-banner {
+    display: none; position: sticky; top: 0; z-index: 200;
+    background: var(--warn); color: #0a0a0a;
+    padding: 10px 20px; font-weight: 700; font-size: 0.9rem;
+    text-align: center; border-bottom: 2px solid #d4891b;
+    animation: pulse-bg 2s ease-in-out infinite;
+  }
+  #op-banner.remove-mode { background: var(--err); border-color: #c03040; animation: pulse-bg-red 2s ease-in-out infinite; }
+  @keyframes pulse-bg     { 0%,100%{background:var(--warn);}  50%{background:#ffd07a;} }
+  @keyframes pulse-bg-red { 0%,100%{background:var(--err);}   50%{background:#ff7b90;} }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  h1 span { color: var(--accent2); }
+  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 1rem; color: var(--accent2); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .step-num { background: var(--card); color: var(--text); border-radius: 50%; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media(max-width:640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 4px; }
+  input, select { width: 100%; padding: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 0.9rem; outline: none; }
+  input:focus, select:focus { border-color: var(--accent2); }
+  .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: opacity .2s; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary   { background: var(--accent);  color: #fff; }
+  .btn-danger    { background: rgba(233,69,96,.15); color: var(--err); border: 1px solid var(--err); }
+  .btn-danger:hover { background: var(--err); color: #fff; }
+  .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .btn-success   { background: var(--ok); color: #0a0a1a; }
+  .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .tab-btn {
+    padding: 9px 22px; border: 1px solid var(--border);
+    border-bottom: none; border-radius: 4px 4px 0 0;
+    background: var(--surface); color: var(--text-dim);
+    cursor: pointer; font-size: 0.88rem; font-weight: 600;
+    position: relative; bottom: -1px; transition: all .15s;
+  }
+  .tab-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+  .tab-btn.active { background: var(--bg); color: var(--text); border-color: var(--border); border-bottom-color: var(--bg); }
+  .tab-btn.tab-danger.active { color: var(--err); }
+
+  /* ── Device table ── */
+  .dev-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 12px; }
+  .dev-table th { text-align: left; padding: 8px 12px; background: var(--card); color: var(--text-dim); font-weight: 600; }
+  .dev-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .dev-table tr.dev-body:hover td { background: rgba(255,255,255,.03); cursor: pointer; }
+  .dev-table tr.dev-panel-row td { padding: 0; }
+
+  /* ── Expandable device panel ── */
+  .dev-panel { display: none; border-top: 1px solid var(--border); background: rgba(15,52,96,.4); }
+  .dev-panel.open { display: block; }
+  .dev-panel-section { padding: 12px 16px; }
+  .dev-panel-section + .dev-panel-section { border-top: 1px solid var(--border); }
+  .dev-panel-section h4 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); margin-bottom: 10px; }
+  .dev-cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .dev-cfg-grid label { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 3px; }
+  .dev-cfg-grid input { font-size: 0.82rem; padding: 6px 10px; }
+  .dp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+  .dp-chip { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 5px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .dp-chip .dp-id { font-size: 0.7rem; color: var(--text-dim); }
+  .dp-chip .dp-name { font-size: 0.82rem; font-weight: 600; }
+  .dp-chip .dp-plat { font-size: 0.72rem; color: var(--accent2); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge-ok   { background: rgba(78,204,163,.15);  color: var(--ok); }
+  .badge-off  { background: rgba(233,69,96,.15);   color: var(--err); }
+  .badge-dim  { background: rgba(160,160,176,.1);  color: var(--text-dim); }
+  .badge-cat  { background: rgba(78,204,163,.08);  color: var(--accent2); border: 1px solid rgba(78,204,163,.2); }
+  .badge-warn { background: rgba(245,166,35,.12);  color: var(--warn); border: 1px solid rgba(245,166,35,.25); }
+
+  /* ── Installed devices list (remove tab) ── */
+  .inst-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .inst-row:last-child { border-bottom: none; }
+  .inst-info { flex: 1; min-width: 0; }
+  .inst-name { font-weight: 600; font-size: 0.92rem; margin-bottom: 4px; }
+  .inst-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.8rem; color: var(--text-dim); }
+  .inst-meta code { background: var(--card); padding: 1px 6px; border-radius: 4px; font-size: 0.78rem; }
+  .inst-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+  /* ── Progress log ── */
+  .progress-ticker {
+    display: none; align-items: center; gap: 8px;
+    padding: 8px 12px; margin-bottom: 8px;
+    background: rgba(78,204,163,.08); border: 1px solid rgba(78,204,163,.2);
+    border-radius: 4px; font-size: 0.83rem; color: var(--accent2);
+  }
+  .progress-ticker.remove-mode { background: rgba(233,69,96,.08); border-color: rgba(233,69,96,.2); color: var(--err); }
+  .progress-pill { display: none; margin-left: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; font-size: 0.75rem; color: var(--text-dim); }
+  #log, #remove-log {
+    background: #0a0a1a; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px; font-family: monospace; font-size: 0.82rem;
+    max-height: 380px; overflow-y: auto;
+  }
+  .log-line { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.04); display: flex; gap: 8px; align-items: flex-start; }
+  .log-line:last-child { border-bottom: none; }
+  .log-icon { flex-shrink: 0; }
+  .log-dev  { color: var(--accent2); font-weight: 600; }
+  .log-ok   { color: var(--ok); }
+  .log-err  { color: var(--err); }
+  .log-info { color: var(--text-dim); }
+
+  /* ── Animations ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin .7s linear infinite; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .25s ease; }
+  .hidden { display: none !important; }
+  .locked { opacity: .4; pointer-events: none; }
+
+  .sel-all-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--card); border-radius: 4px; margin-bottom: 8px; font-size: 0.83rem; color: var(--text-dim); cursor: pointer; }
+  .sel-all-row:hover { color: var(--text); }
+  .hint { font-size: 0.78rem; color: var(--text-dim); margin-top: 8px; }
+  code { background: var(--card); padding: 1px 5px; border-radius: 3px; font-size: 0.82em; }
+</style>
 </head>
 <body>
-  <div class="card">
-    <div class="icon">🧩</div>
-    <h1>Tuya Wizard</h1>
-    <p>
-      The UI for Tuya Wizard is under construction.<br />
-      The backend API is fully operational — devices can be discovered
-      and provisioned via the REST endpoints below.
-    </p>
-    <ul style="text-align:left; color:#757575; font-size:13px; line-height:2; margin-bottom:24px; list-style:none; padding:0;">
-      <li><code>POST /api/tuya_wizard/discover</code> — discover devices</li>
-      <li><code>GET  /api/tuya_wizard/devices</code> — list provisioned</li>
-      <li><code>POST /api/tuya_wizard/provision</code> — add to LocalTuya</li>
-      <li><code>POST /api/tuya_wizard/remove</code> — remove device</li>
-      <li><code>GET  /api/tuya_wizard/card_templates</code> — card templates</li>
-    </ul>
-    <span class="badge">v0.1.0 — coming soon</span>
+
+<div id="version-badge">Tuya Wizard v0.2.0</div>
+
+<div id="op-banner">
+  <span class="spin">⏳</span>&nbsp;
+  <span id="op-banner-text">Operação em andamento — <strong>NÃO feche nem recarregue esta página</strong></span>
+</div>
+
+<div class="container">
+  <h1>Tuya <span>Wizard</span></h1>
+  <p class="subtitle">Configuração automática de dispositivos Tuya → LocalTuya</p>
+
+  <div class="tabs">
+    <button class="tab-btn active"     id="tab-btn-install" onclick="switchTab('install')">📥 Instalar</button>
+    <button class="tab-btn tab-danger" id="tab-btn-remove"  onclick="switchTab('remove')">🗑️ Remover</button>
   </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!--  INSTALL TAB                                           -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div id="tab-install">
+
+    <!-- STEP 1: Credentials -->
+    <div class="card">
+      <h2><span class="step-num">1</span> Credenciais</h2>
+      <div class="grid2">
+        <div>
+          <label>Client ID (Access ID)</label>
+          <input id="access-id" type="text" placeholder="xxxxxxxxxxxxxxxxxxxxxxxx">
+        </div>
+        <div>
+          <label>Client Secret (Access Secret)</label>
+          <input id="access-secret" type="password" placeholder="xxxxxxxxxxxxxxxxxxxxxxxx">
+        </div>
+      </div>
+      <div class="grid3" style="margin-top:12px">
+        <div>
+          <label>Região</label>
+          <select id="region">
+            <option value="us">US (padrão)</option>
+            <option value="eu">EU</option>
+            <option value="in">IN</option>
+            <option value="cn">CN</option>
+          </select>
+        </div>
+        <div>
+          <label>Senha ONVIF padrão</label>
+          <input id="onvif-default-pwd" type="password" placeholder="Auto-preenche câmeras/doorbells">
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button class="btn btn-secondary btn-sm" onclick="saveConfig()" style="width:100%">
+            💾 Salvar configuração
+          </button>
+        </div>
+      </div>
+      <p class="hint">A senha ONVIF é auto-preenchida em dispositivos das categorias <code>sp</code>, <code>ipc</code> e <code>vcs</code>. Para ajustar por dispositivo, clique na linha para expandir os detalhes.</p>
+      <div class="actions">
+        <button class="btn btn-primary" id="btn-discover" onclick="doDiscover()">
+          🔍 Descobrir Dispositivos
+        </button>
+        <span id="discover-status" style="font-size:0.83rem;color:var(--text-dim);align-self:center"></span>
+      </div>
+    </div>
+
+    <!-- STEP 2: Device list -->
+    <div class="card locked" id="section-devices">
+      <h2><span class="step-num">2</span> Dispositivos Encontrados</h2>
+      <div id="device-list-wrap">
+        <p style="color:var(--text-dim);font-size:.85rem">Nenhum dispositivo encontrado ainda.</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary" id="btn-rediscover" onclick="doDiscover()" disabled>🔄 Re-escanear</button>
+        <button class="btn btn-success"   id="btn-provision"  onclick="doProvision()" disabled>⚡ Adicionar Selecionados ao LocalTuya</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Provisioning log -->
+    <div class="card locked" id="section-provision">
+      <h2>
+        <span class="step-num">3</span> Progresso
+        <span class="progress-pill" id="progress-pill"></span>
+      </h2>
+      <div class="progress-ticker" id="active-step">
+        <span class="spin">⚙</span>
+        <span id="active-step-label">Iniciando…</span>
+      </div>
+      <div id="log"><span class="log-info">Aguardando início…</span></div>
+    </div>
+
+  </div><!-- /tab-install -->
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!--  REMOVE TAB                                            -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div id="tab-remove" class="hidden">
+
+    <div class="card">
+      <h2>🧩 Dispositivos no LocalTuya</h2>
+      <div id="installed-list">
+        <p style="color:var(--text-dim);font-size:.85rem">
+          <span class="spin">⏳</span> Carregando…
+        </p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary btn-sm" onclick="loadInstalled()">🔄 Atualizar</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="section-remove-log">
+      <h2>
+        🗑️ Removendo
+        <span class="progress-pill" id="remove-pill" style="margin-left:auto"></span>
+      </h2>
+      <div class="progress-ticker remove-mode" id="remove-ticker">
+        <span class="spin">⚙</span>
+        <span id="remove-ticker-label">Iniciando remoção…</span>
+      </div>
+      <div id="remove-log"><span class="log-info">Aguardando…</span></div>
+    </div>
+
+  </div><!-- /tab-remove -->
+
+</div><!-- /container -->
+
+<script>
+const API = '/api/tuya_wizard';
+const CAMERA_CATS = new Set(['sp', 'ipc', 'vcs']);
+let discoveredDevices = [];
+let deviceOverrides = {};  // { [idx]: { ip?, onvif_password? } }
+let busy = false;
+
+// ── Utils ────────────────────────────────────────────────────────────────────
+
+const $ = id => document.getElementById(id);
+
+function setBusy(on, removeMode = false) {
+  busy = on;
+  $('op-banner').style.display = on ? 'block' : 'none';
+  if (on) $('op-banner').classList.toggle('remove-mode', removeMode);
+}
+
+function switchTab(name) {
+  ['install', 'remove'].forEach(t => {
+    $(`tab-${t}`).classList.toggle('hidden', t !== name);
+    $(`tab-btn-${t}`).classList.toggle('active', t === name);
+  });
+  if (name === 'remove') loadInstalled();
+}
+
+function log(html, container = 'log') {
+  const el = $(container);
+  const line = document.createElement('div');
+  line.className = 'log-line fade-in';
+  line.innerHTML = html;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function logClear(container = 'log') { $(container).innerHTML = ''; }
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
+async function loadConfig() {
+  try {
+    const r = await fetch(`${API}/config`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.tuya_access_id)         $('access-id').value = d.tuya_access_id;
+    if (d.tuya_access_secret)     $('access-secret').value = d.tuya_access_secret;
+    if (d.tuya_region)            $('region').value = d.tuya_region;
+    if (d.onvif_default_password) $('onvif-default-pwd').value = d.onvif_default_password;
+  } catch (e) { /* silent */ }
+}
+
+async function saveConfig() {
+  await fetch(`${API}/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tuya_access_id:         $('access-id').value.trim(),
+      tuya_access_secret:     $('access-secret').value.trim(),
+      tuya_region:            $('region').value,
+      onvif_default_password: $('onvif-default-pwd').value,
+    }),
+  });
+  $('discover-status').textContent = '✓ Configuração salva';
+  setTimeout(() => { $('discover-status').textContent = ''; }, 2500);
+}
+
+// ── Device overrides ─────────────────────────────────────────────────────────
+
+function setOverride(idx, key, value) {
+  if (!deviceOverrides[idx]) deviceOverrides[idx] = {};
+  deviceOverrides[idx][key] = value;
+  if (key === 'ip') {
+    // enable/disable checkbox based on whether IP is now set
+    const chk = document.querySelector(`.dev-chk[data-idx="${idx}"]`);
+    if (chk) {
+      const hasIp = !!(value.trim() || discoveredDevices[idx].ip);
+      chk.disabled = !hasIp;
+      if (!hasIp) chk.checked = false;
+      // update status badge
+      const badge = document.querySelector(`.online-badge[data-idx="${idx}"]`);
+      if (badge) {
+        badge.className = `badge badge-${hasIp ? 'ok' : 'off'} online-badge`;
+        badge.textContent = hasIp ? 'online' : 'offline';
+      }
+      updateProvisionBtn();
+    }
+  }
+}
+
+// Applies the global default ONVIF password to one freshly-discovered
+// device (camera categories only), without clobbering a per-device value
+// the user may have already typed for it.
+function applyOnvifDefaultTo(idx) {
+  const defaultPwd = $('onvif-default-pwd').value;
+  if (!defaultPwd) return;
+  const dev = discoveredDevices[idx];
+  if (!CAMERA_CATS.has(dev.category)) return;
+  if (!deviceOverrides[idx]) deviceOverrides[idx] = {};
+  if (!deviceOverrides[idx].onvif_password) {
+    deviceOverrides[idx].onvif_password = defaultPwd;
+  }
+}
+
+// ── SSE ──────────────────────────────────────────────────────────────────────
+
+async function readSSE(response, onEvent) {
+  const reader  = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for (const part of parts) {
+      const dataLine  = part.split('\n').find(l => l.startsWith('data:'));
+      const eventLine = part.split('\n').find(l => l.startsWith('event:'));
+      if (!dataLine) continue;
+      const event = eventLine ? eventLine.slice(6).trim() : 'message';
+      let data;
+      try { data = JSON.parse(dataLine.slice(5)); } catch { continue; }
+      onEvent(event, data);
+    }
+  }
+}
+
+// ── Discovery ────────────────────────────────────────────────────────────────
+
+async function doDiscover() {
+  if (busy) return;
+  setBusy(true);
+  $('btn-discover').disabled = true;
+  $('btn-rediscover').disabled = true;
+  $('discover-status').innerHTML = '<span class="spin">⏳</span> Consultando API Tuya…';
+  $('section-devices').classList.add('locked');
+  $('section-provision').classList.add('locked');
+  $('device-list-wrap').innerHTML = '<p style="color:var(--text-dim);font-size:.85rem"><span class="spin">⏳</span> Consultando API Tuya + scan de rede local…</p>';
+  discoveredDevices = [];
+  deviceOverrides = {};
+
+  try {
+    const r = await fetch(`${API}/discover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        credentials: {
+          access_id:     $('access-id').value.trim(),
+          access_secret: $('access-secret').value.trim(),
+          region:        $('region').value,
+        },
+      }),
+    });
+
+    if (!r.ok) {
+      const err = await r.json();
+      $('device-list-wrap').innerHTML = `<p style="color:var(--err)">Erro: ${err.error || r.status}</p>`;
+      $('discover-status').textContent = '';
+      return;
+    }
+
+    // /discover streams SSE — devices arrive one at a time as their local
+    // status resolves, instead of one big blocking response at the end.
+    await readSSE(r, (event, data) => {
+      if (event === 'step' && data.step === 'cloud_scan' && data.ok) {
+        $('discover-status').innerHTML = `<span class="spin">⏳</span> ${data.total} na nuvem, resolvendo na rede local…`;
+      } else if (event === 'device') {
+        discoveredDevices.push(data.device);
+        applyOnvifDefaultTo(discoveredDevices.length - 1);
+        renderDeviceTable();
+        $('section-devices').classList.remove('locked');
+      } else if (event === 'step' && data.step === 'device' && !data.ok) {
+        log(`<span class="log-icon">❌</span><span class="log-err"> Falha ao resolver dispositivo: ${data.detail}</span>`);
+      } else if (event === 'done') {
+        $('discover-status').textContent = `${discoveredDevices.length} dispositivo(s) encontrado(s)`;
+      }
+    });
+
+    if (!discoveredDevices.length) {
+      $('device-list-wrap').innerHTML = '<p style="color:var(--text-dim);font-size:.85rem">Nenhum dispositivo encontrado no projeto Tuya.</p>';
+    }
+  } catch (e) {
+    $('device-list-wrap').innerHTML = `<p style="color:var(--err)">Falha na conexão: ${e.message}</p>`;
+    $('discover-status').textContent = '';
+  } finally {
+    setBusy(false);
+    $('btn-discover').disabled = false;
+    $('btn-rediscover').disabled = false;
+  }
+}
+
+function renderDeviceTable() {
+  if (!discoveredDevices.length) {
+    $('btn-provision').disabled = true;
+    return;
+  }
+
+  let html = `
+    <div class="sel-all-row" onclick="toggleAll(this)">
+      <input type="checkbox" id="chk-all" style="width:auto;cursor:pointer">
+      Selecionar todos (somente dispositivos com IP)
+    </div>
+    <table class="dev-table">
+      <thead>
+        <tr>
+          <th style="width:36px"></th>
+          <th>Nome</th>
+          <th>IP</th>
+          <th>Categoria</th>
+          <th>DPs</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+  discoveredDevices.forEach((dev, i) => {
+    const hasIp    = !!dev.ip;
+    const isCam    = CAMERA_CATS.has(dev.category);
+    const showCfg  = !hasIp || isCam;
+    const expandTip = showCfg || dev.dps.length
+      ? '<span style="color:var(--text-dim);font-size:0.73rem;margin-left:4px">▾</span>' : '';
+
+    const ipDisplay = hasIp
+      ? `<code>${dev.ip}</code>`
+      : `<span class="badge badge-warn">sem IP</span>`;
+
+    const catBadge = dev.category ? `<span class="badge badge-cat">${dev.category}</span>` : '—';
+    const onlineCls  = hasIp ? 'badge-ok' : 'badge-off';
+    const onlineTxt  = hasIp ? 'online' : 'offline';
+
+    // Preserve the checked/expanded state of rows already rendered
+    // (renderDeviceTable() is called once per device as they stream in).
+    const wasChecked = document.querySelector(`.dev-chk[data-idx="${i}"]`)?.checked;
+    const wasOpen = document.getElementById(`dev-panel-${i}`)?.classList.contains('open');
+
+    html += `
+      <tr class="dev-body" onclick="togglePanel(${i})">
+        <td onclick="event.stopPropagation()">
+          <input type="checkbox" class="dev-chk" data-idx="${i}" style="width:auto;cursor:pointer"
+            ${hasIp ? '' : 'disabled title="IP não encontrado — preencha manualmente nos detalhes"'}
+            ${wasChecked ? 'checked' : ''}
+            onchange="updateProvisionBtn()">
+        </td>
+        <td>
+          <div style="font-weight:600">${dev.name}${expandTip}</div>
+          <div style="font-size:0.73rem;color:var(--text-dim);font-family:monospace">${dev.device_id.slice(0,14)}…</div>
+        </td>
+        <td>${ipDisplay}</td>
+        <td>${catBadge}</td>
+        <td>
+          <span style="color:var(--accent2);font-weight:600">${dev.dps.length}</span>
+          <span style="color:var(--text-dim);font-size:0.78rem"> DPs</span>
+        </td>
+        <td><span class="badge ${onlineCls} online-badge" data-idx="${i}">${onlineTxt}</span></td>
+      </tr>
+      <tr class="dev-panel-row">
+        <td colspan="6">
+          <div class="dev-panel${wasOpen ? ' open' : ''}" id="dev-panel-${i}">
+            ${renderDevicePanel(dev, i)}
+          </div>
+        </td>
+      </tr>`;
+  });
+
+  html += '</tbody></table>';
+  $('device-list-wrap').innerHTML = html;
+  updateProvisionBtn();
+}
+
+function renderDevicePanel(dev, i) {
+  const isCam   = CAMERA_CATS.has(dev.category);
+  const hasIp   = !!dev.ip;
+  const showCfg = !hasIp || isCam;
+  const ov      = deviceOverrides[i] || {};
+
+  let cfgHtml = '';
+  if (showCfg) {
+    cfgHtml = `<div class="dev-panel-section">
+      <h4>Configuração do dispositivo</h4>
+      <div class="dev-cfg-grid">`;
+
+    if (!hasIp) {
+      cfgHtml += `
+        <div>
+          <label>IP do dispositivo</label>
+          <input type="text" placeholder="192.168.x.x" value="${ov.ip || ''}"
+            oninput="setOverride(${i}, 'ip', this.value)">
+        </div>`;
+    }
+
+    if (isCam) {
+      cfgHtml += `
+        <div>
+          <label>Senha ONVIF</label>
+          <input type="password" placeholder="Senha ONVIF" value="${ov.onvif_password || ''}"
+            oninput="setOverride(${i}, 'onvif_password', this.value)">
+        </div>`;
+    }
+
+    cfgHtml += `</div></div>`;
+  }
+
+  const dpLabel = dev.dps.length ? `Data Points (${dev.dps.length})` : 'Data Points';
+  const dpsHtml = `<div class="dev-panel-section">
+    <h4>${dpLabel}</h4>
+    ${renderDpChips(dev.dps)}
+  </div>`;
+
+  return cfgHtml + dpsHtml;
+}
+
+function renderDpChips(dps) {
+  if (!dps.length) return '<span style="color:var(--text-dim);font-size:0.8rem">Nenhum DP encontrado para este dispositivo.</span>';
+  return '<div class="dp-grid">' + dps.map(dp => `
+    <div class="dp-chip">
+      <span class="dp-id">DP ${dp.id}</span>
+      <span class="dp-name">${dp.name}</span>
+      <span class="dp-plat">${dp.platform}</span>
+    </div>`).join('') + '</div>';
+}
+
+function togglePanel(i) {
+  const panel = $(`dev-panel-${i}`);
+  if (panel) panel.classList.toggle('open');
+}
+
+function toggleAll(row) {
+  const chk = $('chk-all');
+  chk.checked = !chk.checked;
+  document.querySelectorAll('.dev-chk:not(:disabled)').forEach(c => c.checked = chk.checked);
+  updateProvisionBtn();
+}
+
+function updateProvisionBtn() {
+  const anyChecked = [...document.querySelectorAll('.dev-chk')].some(c => c.checked);
+  $('btn-provision').disabled = !anyChecked;
+}
+
+// ── Provision ────────────────────────────────────────────────────────────────
+
+async function doProvision() {
+  if (busy) return;
+
+  const selected = [...document.querySelectorAll('.dev-chk:checked')]
+    .map(c => {
+      const idx = parseInt(c.dataset.idx);
+      const dev = { ...discoveredDevices[idx] };
+      const ov  = deviceOverrides[idx] || {};
+      if (ov.ip && ov.ip.trim())      dev.ip             = ov.ip.trim();
+      if (ov.onvif_password !== undefined) dev.onvif_password = ov.onvif_password;
+      return dev;
+    });
+
+  if (!selected.length) return;
+
+  setBusy(true);
+  $('btn-provision').disabled = true;
+  $('section-provision').classList.remove('locked');
+  logClear('log');
+
+  const pill = $('progress-pill');
+  pill.style.display = 'inline-block';
+  let done = 0;
+
+  const ticker = $('active-step');
+  ticker.style.display = 'flex';
+
+  try {
+    const r = await fetch(`${API}/provision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        credentials: {
+          access_id:     $('access-id').value.trim(),
+          access_secret: $('access-secret').value.trim(),
+          region:        $('region').value,
+        },
+        devices: selected,
+        default_local_password: $('onvif-default-pwd').value || null,
+      }),
+    });
+
+    await readSSE(r, (event, data) => {
+      if (event === 'start') {
+        pill.textContent = `0 / ${data.total}`;
+        log(`<span class="log-info">▶ Iniciando: ${data.devices} dispositivo(s)…</span>`);
+      } else if (event === 'step') {
+        done++;
+        pill.textContent = `${done} / ${selected.length}`;
+        const icon     = data.ok ? '✅' : '❌';
+        const cls      = data.ok ? 'log-ok' : 'log-err';
+        const devLabel = data.device ? `<span class="log-dev">[${data.device}]</span> ` : '';
+        log(`<span class="log-icon">${icon}</span>${devLabel}<span class="${cls}">${data.step}:</span> <span class="log-info">${data.detail}</span>`);
+        $('active-step-label').textContent = `${data.device || ''} — ${data.step}`;
+      } else if (event === 'done') {
+        ticker.style.display = 'none';
+        log(`<span class="log-ok log-icon">🎉</span><span class="log-ok"> Concluído! Dispositivos adicionados ao LocalTuya.</span>`);
+        pill.textContent = 'Concluído';
+      }
+    });
+  } catch (e) {
+    log(`<span class="log-icon">❌</span><span class="log-err"> Erro: ${e.message}</span>`);
+  } finally {
+    setBusy(false);
+    $('btn-provision').disabled = false;
+    ticker.style.display = 'none';
+  }
+}
+
+// ── Installed devices (remove tab) ───────────────────────────────────────────
+
+async function loadInstalled() {
+  $('installed-list').innerHTML = '<p style="color:var(--text-dim);font-size:.85rem"><span class="spin">⏳</span> Carregando…</p>';
+  try {
+    const r       = await fetch(`${API}/devices`);
+    const devices = await r.json();
+
+    if (!devices.length) {
+      $('installed-list').innerHTML = '<p style="color:var(--text-dim);font-size:.85rem">Nenhum dispositivo no LocalTuya.</p>';
+      return;
+    }
+
+    $('installed-list').innerHTML = devices.map(dev => `
+      <div class="inst-row">
+        <div class="inst-info">
+          <div class="inst-name">${dev.name}</div>
+          <div class="inst-meta">
+            <code>${dev.ip || 'IP desconhecido'}</code>
+            <span>${dev.entity_count} entidade(s)</span>
+            <code style="font-size:0.72rem">${dev.device_id.slice(0,14)}…</code>
+          </div>
+        </div>
+        <div class="inst-actions">
+          <button class="btn btn-danger btn-sm" onclick="doRemove('${dev.device_id}', '${dev.name.replace(/'/g, "\\'")}')">
+            🗑️ Remover
+          </button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    $('installed-list').innerHTML = `<p style="color:var(--err)">Erro ao carregar: ${e.message}</p>`;
+  }
+}
+
+async function doRemove(deviceId, name) {
+  if (busy) return;
+  if (!confirm(`Remover "${name}" do LocalTuya?\n\nEsta ação remove o dispositivo e suas entidades.`)) return;
+
+  setBusy(true, true);
+  $('section-remove-log').classList.remove('hidden');
+  logClear('remove-log');
+  $('remove-ticker').style.display = 'flex';
+  $('remove-ticker-label').textContent = `Removendo ${name}…`;
+
+  try {
+    const r    = await fetch(`${API}/remove`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId }),
+    });
+    const data = await r.json();
+    const icon = data.ok ? '✅' : '❌';
+    const cls  = data.ok ? 'log-ok' : 'log-err';
+    log(`<span class="log-icon">${icon}</span><span class="${cls}"> ${data.detail}</span>`, 'remove-log');
+    if (data.ok) loadInstalled();
+  } catch (e) {
+    log(`<span class="log-icon">❌</span><span class="log-err"> Erro: ${e.message}</span>`, 'remove-log');
+  } finally {
+    setBusy(false);
+    $('remove-ticker').style.display = 'none';
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+loadConfig();
+</script>
 </body>
 </html>

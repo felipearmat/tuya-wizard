@@ -25,6 +25,15 @@ _TUYA_TYPE_TO_PLATFORM: dict[str, str] = {
     "raw": "sensor",
 }
 
+# Tuya's cloud schema reports types in PascalCase (e.g. "Boolean", "Integer");
+# normalize to the short lowercase tokens used above and by value-inference.
+_CLOUD_TYPE_ALIASES: dict[str, str] = {
+    "boolean": "bool",
+    "integer": "int",
+    "json": "raw",
+    "bitmap": "int",
+}
+
 
 def _infer_type_from_value(value: object) -> str:
     """Infer Tuya type from a live DP value when cloud schema is unavailable."""
@@ -55,6 +64,9 @@ def map_dp(
         resolved_type = schema.get("type") or schema.get("data_type") or ""
     if not resolved_type:
         resolved_type = _infer_type_from_value(value) if value is not None else "string"
+
+    resolved_type = resolved_type.lower()
+    resolved_type = _CLOUD_TYPE_ALIASES.get(resolved_type, resolved_type)
 
     platform = _TUYA_TYPE_TO_PLATFORM.get(resolved_type, "sensor")
 

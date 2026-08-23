@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 
 from . import card_store, discovery, provisioner, remover
 from .const import (
+    CONF_ONVIF_DEFAULT_PASSWORD,
     CONF_TUYA_ACCESS_ID,
     CONF_TUYA_ACCESS_SECRET,
     CONF_TUYA_REGION,
@@ -37,22 +38,33 @@ PLATFORMS: list[str] = []
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN]["entry"] = entry
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    domain_data["entry"] = entry
 
-    html = await hass.async_add_executor_job(
-        (_STATIC / "index.html").read_text, "utf-8"
-    )
+    # aiohttp's router raises on a duplicate route name, so re-registering
+    # these on a config-entry reload (options update, "Reload" button, a
+    # second HA restart cycle) would crash setup. Views can't be unregistered
+    # from the router later, so only ever register them the first time.
+    if not domain_data.get("views_registered"):
+        html = await hass.async_add_executor_job(
+            (_STATIC / "index.html").read_text, "utf-8"
+        )
 
-    hass.http.register_view(TuyaWizardIndexView(html))
-    hass.http.register_view(TuyaWizardConfigView(hass, entry))
-    hass.http.register_view(TuyaWizardDiscoverView(hass, entry))
-    hass.http.register_view(TuyaWizardListView(hass))
-    hass.http.register_view(TuyaWizardProvisionView(hass, entry))
-    hass.http.register_view(TuyaWizardRemoveView(hass))
-    hass.http.register_view(TuyaWizardCardTemplatesView(hass))
-    hass.http.register_view(TuyaWizardCardTemplateSaveView(hass))
-    hass.http.register_view(TuyaWizardCardTemplateDeleteView(hass))
+        # Views that need the config entry look it up fresh per-request
+        # (see _current_entry) rather than capturing this specific entry
+        # object — they're only ever constructed this one time, but a full
+        # remove-and-re-add of the integration (not just a reload) creates a
+        # brand new entry object, which a captured reference would miss.
+        hass.http.register_view(TuyaWizardIndexView(html))
+        hass.http.register_view(TuyaWizardConfigView(hass))
+        hass.http.register_view(TuyaWizardDiscoverView(hass))
+        hass.http.register_view(TuyaWizardListView(hass))
+        hass.http.register_view(TuyaWizardProvisionView(hass))
+        hass.http.register_view(TuyaWizardRemoveView(hass))
+        hass.http.register_view(TuyaWizardCardTemplatesView(hass))
+        hass.http.register_view(TuyaWizardCardTemplateSaveView(hass))
+        hass.http.register_view(TuyaWizardCardTemplateDeleteView(hass))
+        domain_data["views_registered"] = True
 
     try:
         async_register_built_in_panel(
@@ -67,12 +79,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except ValueError:
         pass  # panel already registered
 
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Re-run setup after the OptionsFlow updates the entry (new credentials)."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async_remove_panel(hass, "tuya-wizard")
+    hass.data[DOMAIN].pop("entry", None)
     return True
+
+
+def _error(message: str, code: str, status: int) -> web.Response:
+    """JSON error body carrying both a display string and a stable code.
+
+    `message` is today's human-readable (Portuguese) text, kept for backward
+    compatibility; `error_code` is a stable, language-neutral identifier a
+    future frontend can map through HA's own translation strings instead of
+    being stuck displaying backend-hardcoded Portuguese to every locale.
+    """
+    return web.json_response({"error": message, "error_code": code}, status=status)
+
+
+def _admin_required(request: web.Request) -> web.Response | None:
+    """Return a 403 response if the caller isn't an HA admin, else None.
+
+    Every view here manages config entries, provisions/removes devices, or
+    writes JS files under /config/www — all admin-level operations, matching
+    the require_admin=True sidebar panel these views back.
+    """
+    user = request.get("hass_user")
+    if user is None or not user.is_admin:
+        return _error("Admin access required", "admin_required", 403)
+    return None
+
+
+def _current_entry(hass: HomeAssistant) -> ConfigEntry | None:
+    """Look up the (single) Tuya Wizard config entry fresh on every call.
+
+    Views hold onto their view instance for the lifetime of the HA process
+    (see the views_registered guard above), so they can't cache a specific
+    ConfigEntry object — it would go stale across a remove-and-re-add.
+    """
+    entries = hass.config_entries.async_entries(DOMAIN)
+    return entries[0] if entries else None
 
 
 def _build_creds(data: dict) -> TuyaCredentials | None:
@@ -93,46 +147,59 @@ def _build_creds(data: dict) -> TuyaCredentials | None:
 class TuyaWizardIndexView(HomeAssistantView):
     url = "/api/tuya_wizard/"
     name = "api:tuya_wizard:index"
-    requires_auth = False
 
     def __init__(self, html: str) -> None:
         self._html = html
 
     async def get(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         return web.Response(text=self._html, content_type="text/html", charset="utf-8")
 
 
 class TuyaWizardConfigView(HomeAssistantView):
     url = "/api/tuya_wizard/config"
     name = "api:tuya_wizard:config"
-    requires_auth = False
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._entry = entry
 
     async def get(self, request: web.Request) -> web.Response:
-        d = self._entry.data
+        if (resp := _admin_required(request)) is not None:
+            return resp
+        entry = _current_entry(self._hass)
+        d = entry.data if entry else {}
         return self.json(
             {
                 "tuya_access_id": d.get(CONF_TUYA_ACCESS_ID, ""),
                 "tuya_access_secret": d.get(CONF_TUYA_ACCESS_SECRET, ""),
                 "tuya_region": d.get(CONF_TUYA_REGION, "us"),
+                "onvif_default_password": d.get(CONF_ONVIF_DEFAULT_PASSWORD, ""),
             }
         )
 
     async def post(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
+        entry = _current_entry(self._hass)
+        if entry is None:
+            return _error("Integração não configurada", "entry_not_found", 404)
         try:
             body = await request.json()
         except Exception:
-            return self.json({"error": "JSON inválido"}, status_code=400)
+            return _error("JSON inválido", "invalid_json", 400)
 
-        new_data = dict(self._entry.data)
-        for key in (CONF_TUYA_ACCESS_ID, CONF_TUYA_ACCESS_SECRET, CONF_TUYA_REGION):
+        new_data = dict(entry.data)
+        for key in (
+            CONF_TUYA_ACCESS_ID,
+            CONF_TUYA_ACCESS_SECRET,
+            CONF_TUYA_REGION,
+            CONF_ONVIF_DEFAULT_PASSWORD,
+        ):
             if key in body:
                 new_data[key] = body[key]
 
-        self._hass.config_entries.async_update_entry(self._entry, data=new_data)
+        self._hass.config_entries.async_update_entry(entry, data=new_data)
         return self.json({"ok": True})
 
 
@@ -141,27 +208,41 @@ class TuyaWizardDiscoverView(HomeAssistantView):
 
     url = "/api/tuya_wizard/discover"
     name = "api:tuya_wizard:discover"
-    requires_auth = False
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._entry = entry
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request) -> StreamResponse:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         try:
             body = await request.json()
             req = DiscoverRequest(**body)
         except Exception:
-            return self.json({"error": "JSON inválido"}, status_code=400)
+            return _error("JSON inválido", "invalid_json", 400)
 
-        creds = req.credentials or _build_creds(self._entry.data)
+        entry = _current_entry(self._hass)
+        creds = req.credentials or (_build_creds(entry.data) if entry else None)
         if not creds:
-            return self.json(
-                {"error": "Credenciais Tuya não configuradas"}, status_code=422
+            return _error(
+                "Credenciais Tuya não configuradas", "credentials_missing", 422
             )
 
-        devices = await discovery.run(self._hass, creds)
-        return self.json([d.model_dump() for d in devices])
+        response = StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+        await response.prepare(request)
+
+        async for chunk in discovery.stream(self._hass, creds):
+            await response.write(chunk.encode())
+
+        await response.write_eof()
+        return response
 
 
 class TuyaWizardListView(HomeAssistantView):
@@ -169,12 +250,13 @@ class TuyaWizardListView(HomeAssistantView):
 
     url = "/api/tuya_wizard/devices"
     name = "api:tuya_wizard:devices"
-    requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         devices: list[dict] = []
         for entry in self._hass.config_entries.async_entries("localtuya"):
             for dev_id, dev in entry.data.get("devices", {}).items():
@@ -194,18 +276,18 @@ class TuyaWizardProvisionView(HomeAssistantView):
 
     url = "/api/tuya_wizard/provision"
     name = "api:tuya_wizard:provision"
-    requires_auth = False
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._entry = entry
 
     async def post(self, request: web.Request) -> StreamResponse:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         try:
             body = await request.json()
             req = ProvisionRequest(**body)
         except Exception:
-            return self.json({"error": "JSON inválido"}, status_code=400)
+            return _error("JSON inválido", "invalid_json", 400)
 
         response = StreamResponse(
             status=200,
@@ -217,7 +299,9 @@ class TuyaWizardProvisionView(HomeAssistantView):
         )
         await response.prepare(request)
 
-        async for chunk in provisioner.run(self._hass, req.devices):
+        async for chunk in provisioner.run(
+            self._hass, req.devices, req.default_local_password
+        ):
             await response.write(chunk.encode())
 
         await response.write_eof()
@@ -229,17 +313,18 @@ class TuyaWizardRemoveView(HomeAssistantView):
 
     url = "/api/tuya_wizard/remove"
     name = "api:tuya_wizard:remove"
-    requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         try:
             body = await request.json()
             req = RemoveRequest(**body)
         except Exception:
-            return self.json({"error": "JSON inválido"}, status_code=400)
+            return _error("JSON inválido", "invalid_json", 400)
 
         ok, msg = await remover.run(self._hass, req.device_id)
         return self.json({"ok": ok, "detail": msg})
@@ -250,12 +335,13 @@ class TuyaWizardCardTemplatesView(HomeAssistantView):
 
     url = "/api/tuya_wizard/card_templates"
     name = "api:tuya_wizard:card_templates"
-    requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         templates = await card_store.load(self._hass)
         return self.json([t.model_dump() for t in templates])
 
@@ -265,17 +351,18 @@ class TuyaWizardCardTemplateSaveView(HomeAssistantView):
 
     url = "/api/tuya_wizard/card_templates/save"
     name = "api:tuya_wizard:card_templates:save"
-    requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         try:
             body = await request.json()
             req = CardTemplateSaveRequest(**body)
         except Exception:
-            return self.json({"error": "JSON inválido"}, status_code=400)
+            return _error("JSON inválido", "invalid_json", 400)
 
         await card_store.upsert(self._hass, req.template)
         ok, msg = await card_store.deploy_card(self._hass, req.template)
@@ -287,21 +374,24 @@ class TuyaWizardCardTemplateDeleteView(HomeAssistantView):
 
     url = "/api/tuya_wizard/card_templates/delete"
     name = "api:tuya_wizard:card_templates:delete"
-    requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
 
     async def post(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
         try:
             body = await request.json()
             req = CardTemplateDeleteRequest(**body)
         except Exception:
-            return self.json({"error": "JSON inválido"}, status_code=400)
+            return _error("JSON inválido", "invalid_json", 400)
 
         deleted = await card_store.delete(self._hass, req.template_id)
         if not deleted:
-            return self.json(
-                {"error": "Template não encontrado ou é builtin"}, status_code=404
+            return _error(
+                "Template não encontrado ou é builtin",
+                "template_not_found_or_builtin",
+                404,
             )
         return self.json({"ok": True})

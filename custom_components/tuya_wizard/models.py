@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_SAFE_TEMPLATE_ID_RE = re.compile(r"^[a-z0-9_-]{1,64}$")
 
 
 class TuyaCredentials(BaseModel):
@@ -33,6 +36,7 @@ class DeviceInfo(BaseModel):
     category: str = ""
     dps: list[DpInfo] = Field(default_factory=list)
     online: bool = True
+    onvif_password: str = ""
 
 
 class DpEntry(BaseModel):
@@ -48,6 +52,17 @@ class CardTemplate(BaseModel):
     main_dps: list[DpEntry] = Field(default_factory=list)
     advanced_dps: list[DpEntry] = Field(default_factory=list)
 
+    @field_validator("id")
+    @classmethod
+    def _validate_id(cls, value: str) -> str:
+        # id is used both as a filename under /config/www and as a JS custom
+        # element tag name — restrict it so it can never break out of either.
+        if not _SAFE_TEMPLATE_ID_RE.match(value):
+            raise ValueError(
+                "id must be 1-64 lowercase letters, digits, '-' or '_'"
+            )
+        return value
+
 
 class DiscoverRequest(BaseModel):
     credentials: TuyaCredentials
@@ -56,6 +71,7 @@ class DiscoverRequest(BaseModel):
 class ProvisionRequest(BaseModel):
     credentials: TuyaCredentials
     devices: list[DeviceInfo]
+    default_local_password: Optional[str] = None
 
 
 class RemoveRequest(BaseModel):

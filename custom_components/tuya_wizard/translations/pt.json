@@ -14,5 +14,19 @@
     "abort": {
       "already_configured": "O Tuya Wizard já está configurado."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tuya Wizard",
+        "description": "Atualize suas credenciais da Tuya IoT Platform.",
+        "data": {
+          "tuya_access_id": "Client ID",
+          "tuya_access_secret": "Client Secret",
+          "tuya_region": "Região",
+          "onvif_default_password": "Senha ONVIF padrão"
+        }
+      }
+    }
   }
 }
