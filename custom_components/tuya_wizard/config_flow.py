@@ -14,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
+    CONF_FRIGATE_URL,
     CONF_ONVIF_DEFAULT_PASSWORD,
     CONF_TUYA_ACCESS_ID,
     CONF_TUYA_ACCESS_SECRET,
@@ -22,7 +23,7 @@ from .const import (
 )
 
 
-def _schema(defaults: dict, *, include_onvif: bool = False) -> vol.Schema:
+def _schema(defaults: dict, *, include_extras: bool = False) -> vol.Schema:
     fields = {
         vol.Optional(
             CONF_TUYA_ACCESS_ID, default=defaults.get(CONF_TUYA_ACCESS_ID, "")
@@ -35,14 +36,19 @@ def _schema(defaults: dict, *, include_onvif: bool = False) -> vol.Schema:
             CONF_TUYA_REGION, default=defaults.get(CONF_TUYA_REGION, "us")
         ): vol.In(["us", "eu", "in", "cn"]),
     }
-    if include_onvif:
+    if include_extras:
         # Only offered once devices likely exist to configure — there's no
-        # point asking for it during first-run setup, before any camera has
-        # even been discovered.
+        # point asking for these during first-run setup, before any camera
+        # has even been discovered or Frigate is known to be in use.
         fields[
             vol.Optional(
                 CONF_ONVIF_DEFAULT_PASSWORD,
                 default=defaults.get(CONF_ONVIF_DEFAULT_PASSWORD, ""),
+            )
+        ] = str
+        fields[
+            vol.Optional(
+                CONF_FRIGATE_URL, default=defaults.get(CONF_FRIGATE_URL, "")
             )
         ] = str
     return vol.Schema(fields)
@@ -80,5 +86,5 @@ class TuyaWizardOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_schema(self._config_entry.data, include_onvif=True),
+            data_schema=_schema(self._config_entry.data, include_extras=True),
         )

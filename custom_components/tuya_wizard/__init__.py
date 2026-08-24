@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 
 from . import card_store, discovery, provisioner, remover
 from .const import (
+    CONF_FRIGATE_URL,
     CONF_ONVIF_DEFAULT_PASSWORD,
     CONF_TUYA_ACCESS_ID,
     CONF_TUYA_ACCESS_SECRET,
@@ -184,6 +185,7 @@ class TuyaWizardConfigView(HomeAssistantView):
                 "tuya_access_secret": d.get(CONF_TUYA_ACCESS_SECRET, ""),
                 "tuya_region": d.get(CONF_TUYA_REGION, "us"),
                 "onvif_default_password": d.get(CONF_ONVIF_DEFAULT_PASSWORD, ""),
+                "frigate_url": d.get(CONF_FRIGATE_URL, ""),
             }
         )
 
@@ -204,6 +206,7 @@ class TuyaWizardConfigView(HomeAssistantView):
             CONF_TUYA_ACCESS_SECRET,
             CONF_TUYA_REGION,
             CONF_ONVIF_DEFAULT_PASSWORD,
+            CONF_FRIGATE_URL,
         ):
             if key in body:
                 new_data[key] = body[key]
@@ -298,6 +301,9 @@ class TuyaWizardProvisionView(HomeAssistantView):
         except Exception:
             return _error("JSON inválido", "invalid_json", 400)
 
+        entry = _current_entry(self._hass)
+        frigate_url = entry.data.get(CONF_FRIGATE_URL) if entry else None
+
         response = StreamResponse(
             status=200,
             headers={
@@ -309,7 +315,7 @@ class TuyaWizardProvisionView(HomeAssistantView):
         await response.prepare(request)
 
         async for chunk in provisioner.run(
-            self._hass, req.devices, req.default_local_password
+            self._hass, req.devices, req.default_local_password, frigate_url
         ):
             await response.write(chunk.encode())
 

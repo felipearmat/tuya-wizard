@@ -143,7 +143,7 @@
 </head>
 <body>
 
-<div id="version-badge">Tuya Wizard v0.2.1</div>
+<div id="version-badge">Tuya Wizard v0.3.0</div>
 
 <div id="op-banner">
   <span class="spin">⏳</span>&nbsp;
@@ -191,13 +191,17 @@
           <label>Senha ONVIF padrão</label>
           <input id="onvif-default-pwd" type="password" placeholder="Auto-preenche câmeras/doorbells">
         </div>
-        <div style="display:flex;align-items:flex-end">
-          <button class="btn btn-secondary btn-sm" onclick="saveConfig()" style="width:100%">
-            💾 Salvar configuração
-          </button>
+        <div>
+          <label>URL do Frigate</label>
+          <input id="frigate-url" type="text" placeholder="vazio = detectar em localhost:5000">
         </div>
       </div>
-      <p class="hint">A senha ONVIF é auto-preenchida em dispositivos das categorias <code>sp</code>, <code>ipc</code> e <code>vcs</code>. Para ajustar por dispositivo, clique na linha para expandir os detalhes.</p>
+      <div class="actions">
+        <button class="btn btn-secondary btn-sm" onclick="saveConfig()">
+          💾 Salvar configuração
+        </button>
+      </div>
+      <p class="hint">A senha ONVIF é auto-preenchida em dispositivos das categorias <code>sp</code>, <code>ipc</code> e <code>vcs</code>. Para ajustar por dispositivo, clique na linha para expandir os detalhes. Se o Frigate estiver instalado, o áudio+vídeo da câmera é configurado nele automaticamente ao provisionar.</p>
       <div class="actions">
         <button class="btn btn-primary" id="btn-discover" onclick="doDiscover()">
           🔍 Descobrir Dispositivos
@@ -339,6 +343,7 @@ async function loadConfig() {
     if (d.tuya_access_secret)     $('access-secret').value = d.tuya_access_secret;
     if (d.tuya_region)            $('region').value = d.tuya_region;
     if (d.onvif_default_password) $('onvif-default-pwd').value = d.onvif_default_password;
+    if (d.frigate_url)            $('frigate-url').value = d.frigate_url;
   } catch (e) { /* silent */ }
 }
 
@@ -351,6 +356,7 @@ async function saveConfig() {
       tuya_access_secret:     $('access-secret').value.trim(),
       tuya_region:            $('region').value,
       onvif_default_password: $('onvif-default-pwd').value,
+      frigate_url:            $('frigate-url').value.trim(),
     }),
   });
   $('discover-status').textContent = '✓ Configuração salva';

@@ -8,7 +8,7 @@ from collections.abc import AsyncGenerator
 
 from homeassistant.core import HomeAssistant
 
-from . import card_store, local_enable
+from . import card_store, frigate_integration, local_enable
 from .models import DeviceInfo, DpInfo
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,8 +86,11 @@ async def run(
     hass: HomeAssistant,
     devices: list[DeviceInfo],
     default_local_password: str | None = None,
+    frigate_url: str | None = None,
 ) -> AsyncGenerator[str, None]:
     yield _sse("start", {"devices": len(devices), "total": len(devices)})
+
+    resolved_frigate_url = await frigate_integration.resolve_url(hass, frigate_url)
 
     for device in devices:
         if not device.ip:
@@ -117,6 +120,20 @@ async def run(
                         "step": f"local_enable:{result.step}",
                         "ok": result.status != "error",
                         "detail": result.detail,
+                    },
+                )
+
+            if resolved_frigate_url and secret:
+                frigate_ok, frigate_msg = await frigate_integration.configure_camera(
+                    hass, resolved_frigate_url, device, secret
+                )
+                yield _sse(
+                    "step",
+                    {
+                        "device": device.slug,
+                        "step": "frigate",
+                        "ok": frigate_ok,
+                        "detail": frigate_msg,
                     },
                 )
 
