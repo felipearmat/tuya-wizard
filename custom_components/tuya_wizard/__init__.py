@@ -15,7 +15,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from . import card_store, discovery, provisioner, remover
+from . import card_store, companion, discovery, provisioner, remover
 from .const import (
     CONF_FRIGATE_URL,
     CONF_ONVIF_DEFAULT_PASSWORD,
@@ -79,6 +79,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     except ValueError:
         pass  # panel already registered
+
+    # Keep the Tuya Proxy Companion camera list registered across restarts.
+    if "companion" not in domain_data:
+        sync = companion.CompanionSync(hass)
+        await sync.async_start()
+        domain_data["companion"] = sync
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True

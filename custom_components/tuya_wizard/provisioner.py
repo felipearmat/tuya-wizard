@@ -9,6 +9,7 @@ from collections.abc import AsyncGenerator
 from homeassistant.core import HomeAssistant
 
 from . import card_store, frigate_integration, local_enable
+from .const import DOMAIN
 from .models import DeviceInfo, DpInfo
 
 _LOGGER = logging.getLogger(__name__)
@@ -142,6 +143,24 @@ async def run(
             "step",
             {"device": device.slug, "step": "localtuya", "ok": ok, "detail": msg},
         )
+
+        if ok and local_enable.has_profile(device.category):
+            # Cameras: register in the Tuya Proxy Companion (local motion
+            # events -> Frigate). The cloud block stays off by default: Tuya
+            # cameras validate the cloud TLS certificate and many stop
+            # detecting motion without the cloud.
+            sync = hass.data.get(DOMAIN, {}).get("companion")
+            if sync and await sync.async_available():
+                comp_ok, comp_msg = await sync.async_upsert(
+                    slug=device.slug,
+                    ip=device.ip,
+                    device_id=device.device_id,
+                    local_key=device.local_key,
+                )
+                yield _sse(
+                    "step",
+                    {"device": device.slug, "step": "companion", "ok": comp_ok, "detail": comp_msg},
+                )
 
         if ok:
             card_ok, card_msg = await card_store.auto_deploy_for_device(hass, device)

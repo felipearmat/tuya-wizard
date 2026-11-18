@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import time
 
 import aiohttp
 import yaml
@@ -91,12 +92,20 @@ def _ffprobe_codec_types(url: str) -> set[str]:
         return set()
 
 
-def _probe_rtsp(ip: str, password: str) -> tuple[int, str] | None:
-    """Blocking. Try known port/path conventions; return the first with video."""
-    for port, path in _RTSP_CANDIDATES:
-        url = f"rtsp://{ONVIF_USERNAME}:{password}@{ip}:{port}/{path}"
-        if "video" in _ffprobe_codec_types(url):
-            return port, path
+def _probe_rtsp(ip: str, password: str, attempts: int = 4, wait_s: float = 5.0) -> tuple[int, str] | None:
+    """Blocking. Try known port/path conventions; return the first with video.
+
+    Retries a few times: right after the local-enable step writes the ONVIF
+    password, many cameras restart their RTSP server for a few seconds, and a
+    single probe in that window wrongly reports "no stream".
+    """
+    for attempt in range(attempts):
+        for port, path in _RTSP_CANDIDATES:
+            url = f"rtsp://{ONVIF_USERNAME}:{password}@{ip}:{port}/{path}"
+            if "video" in _ffprobe_codec_types(url):
+                return port, path
+        if attempt < attempts - 1:
+            time.sleep(wait_s)
     return None
 
 
