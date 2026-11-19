@@ -143,7 +143,7 @@
 </head>
 <body>
 
-<div id="version-badge">Tuya Wizard v0.5.0</div>
+<div id="version-badge">Tuya Wizard v0.6.0</div>
 
 <div id="op-banner">
   <span class="spin">⏳</span>&nbsp;
@@ -156,6 +156,7 @@
 
   <div class="tabs">
     <button class="tab-btn active"     id="tab-btn-install" onclick="switchTab('install')">📥 Instalar</button>
+    <button class="tab-btn"            id="tab-btn-cloud"   onclick="switchTab('cloud')">☁️ Nuvem</button>
     <button class="tab-btn tab-danger" id="tab-btn-remove"  onclick="switchTab('remove')">🗑️ Remover</button>
   </div>
 
@@ -273,6 +274,36 @@
 
   </div><!-- /tab-remove -->
 
+  <!-- CLOUD TAB: per-device cloud block through the Tuya Proxy Companion -->
+  <div id="tab-cloud" class="hidden">
+    <div class="card">
+      <h2>☁️ Bloquear a nuvem por aparelho</h2>
+      <p class="hint" id="cloud-companion"></p>
+      <div class="hint" style="border-left:3px solid var(--warn,#c80);padding:8px 12px;margin:10px 0">
+        <strong>Antes de bloquear, saiba:</strong>
+        <ul style="margin:6px 0 0 18px">
+          <li><strong>Pode vazar.</strong> O bloqueio desvia o tráfego do aparelho pelo Home Assistant, mas o roteador ainda responde a ele de vez em quando, e nessas janelas uma mensagem escapa para a nuvem. Use "Verificar vazamento" depois de algumas horas.</li>
+          <li><strong>Câmeras Tuya podem parar de detectar movimento.</strong> Elas conferem o certificado da nuvem e não aceitam o Home Assistant no lugar dela; muitas só geram o evento de movimento depois de falar com a nuvem. Para câmeras, prefira a detecção do Frigate.</li>
+          <li><strong>Se o Home Assistant ou o Companion parar, o bloqueio para</strong> (a nuvem volta) e é refeito sozinho quando eles voltam.</li>
+          <li>Para parear de novo ou atualizar o firmware, libere a nuvem e bloqueie de novo depois.</li>
+        </ul>
+      </div>
+      <details style="margin:10px 0">
+        <summary><strong>Bloqueio firme no roteador (recomendado junto)</strong></summary>
+        <ol style="margin:8px 0 0 18px">
+          <li>Reserve um IP fixo para o aparelho no DHCP do roteador (pelo endereço MAC).</li>
+          <li>Crie uma regra de firewall que bloqueie a internet desse IP (tráfego da rede local para a internet, TCP e UDP). O aparelho continua acessível na rede de casa.</li>
+          <li><em>Vivo / MitraStar:</em> Configurações avançadas → Firewall → Regras → "Rejeitar do Local", IP de origem = o do aparelho, máscara 255.255.255.255.</li>
+          <li><em>TP-Link:</em> Segurança → Controle de acesso (ou Controle dos pais) → bloquear o aparelho para a internet.</li>
+          <li><em>Intelbras:</em> Firewall → Filtro de IP/MAC → bloquear o IP de origem para a WAN.</li>
+          <li><em>OpenWrt:</em> Rede → Firewall → Regras de tráfego → origem lan com o IP do aparelho, destino wan, ação reject.</li>
+          <li>Alternativa mais fácil, se o roteador tiver: uma rede Wi-Fi só para aparelhos inteligentes, sem acesso à internet.</li>
+        </ol>
+      </details>
+      <div id="cloud-list"><p class="hint">Carregando…</p></div>
+    </div>
+  </div>
+
 </div><!-- /container -->
 
 <script>
@@ -319,11 +350,56 @@ function setBusy(on, removeMode = false) {
 }
 
 function switchTab(name) {
-  ['install', 'remove'].forEach(t => {
+  ['install', 'cloud', 'remove'].forEach(t => {
     $(`tab-${t}`).classList.toggle('hidden', t !== name);
     $(`tab-btn-${t}`).classList.toggle('active', t === name);
   });
   if (name === 'remove') loadInstalled();
+  if (name === 'cloud') loadCloud();
+}
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function loadCloud() {
+  const wrap = $('cloud-list');
+  try {
+    const r = await apiFetch('/cloud');
+    const d = await r.json();
+    $('cloud-companion').innerHTML = d.companion
+      ? '✓ Tuya Proxy Companion rodando: o bloqueio está disponível.'
+      : '⚠ O <strong>Tuya Proxy Companion</strong> não está instalado ou não está rodando. Sem ele, o bloqueio por aparelho não está disponível; use o bloqueio no roteador.';
+    if (!d.devices.length) { wrap.innerHTML = '<p class="hint">Nenhum aparelho no LocalTuya.</p>'; return; }
+    wrap.innerHTML = '<table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left">Aparelho</th><th style="text-align:left">IP</th><th style="text-align:left">Nuvem</th><th></th></tr></thead><tbody>' +
+      d.devices.map(dev => `<tr>
+        <td>${esc(dev.name)}</td><td>${esc(dev.ip || '—')}</td>
+        <td id="cloud-st-${esc(dev.device_id)}">${dev.blocked ? '🔒 bloqueada desde ' + new Date(dev.blocked_since).toLocaleString('pt-BR') : 'liberada'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm ${dev.blocked ? 'btn-secondary' : 'btn-primary'}" ${d.companion ? '' : 'disabled'}
+            onclick="setCloud('${esc(dev.device_id)}', ${dev.blocked ? 'false' : 'true'})">${dev.blocked ? 'Liberar' : 'Bloquear'}</button>
+          ${dev.blocked ? `<button class="btn btn-sm btn-secondary" onclick="leakCheck('${esc(dev.device_id)}')">Verificar vazamento</button>` : ''}
+        </td></tr>`).join('') + '</tbody></table>';
+  } catch (e) { wrap.innerHTML = `<p style="color:var(--err)">Erro: ${esc(e.message)}</p>`; }
+}
+
+async function setCloud(id, block) {
+  if (block && !confirm('Bloquear a nuvem deste aparelho? Leia os avisos acima (câmeras podem parar de detectar movimento).')) return;
+  const r = await apiFetch('/cloud', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device_id: id, action: block ? 'block' : 'unblock' }) });
+  const d = await r.json();
+  if (!d.ok) alert(d.detail || d.error || 'Falhou');
+  loadCloud();
+}
+
+async function leakCheck(id) {
+  const cell = $(`cloud-st-${id}`);
+  cell.textContent = 'verificando na nuvem…';
+  const r = await apiFetch('/cloud', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device_id: id, action: 'leak_check' }) });
+  const d = await r.json();
+  if (!r.ok) { cell.textContent = d.error || 'falha na verificação'; return; }
+  cell.innerHTML = d.leaking
+    ? `⚠ <strong>vazando</strong>: a nuvem recebeu ${d.count} registro(s) depois do bloqueio (último ${new Date(d.last).toLocaleString('pt-BR')}). Faça o bloqueio no roteador.`
+    : '🔒 bloqueada, sem vazamento desde o início';
 }
 
 function log(html, container = 'log') {

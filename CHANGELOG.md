@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0
+
+- New "Nuvem" (cloud) tab: per-device cloud block through the Tuya Proxy
+  Companion (`GET/POST /api/tuya_wizard/cloud`), available only when the
+  Companion is running. Devices added only for the block leave the Companion
+  again when unblocked (each entry keeps a local connection open).
+- The tab explains the limits learned in the field: the ARP-based block can
+  leak; Tuya cameras validate the cloud TLS certificate and many stop detecting
+  motion without the cloud; the block stops if Home Assistant/the Companion is
+  down and is re-applied when they return.
+- Router help: reserve a fixed IP and block it to the internet (generic steps
+  plus Vivo/MitraStar, TP-Link, Intelbras and OpenWrt), or use an IoT Wi-Fi
+  without internet.
+- Leak check: reads the device's cloud log and reports anything the cloud
+  received after the block started.
+
 ## 0.5.0
 
 - Home selector: the page lists the Tuya homes (spaces) the cloud project sees

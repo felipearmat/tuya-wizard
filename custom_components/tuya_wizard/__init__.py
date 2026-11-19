@@ -15,7 +15,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from . import card_store, companion, discovery, provisioner, remover
+from . import card_store, cloud_block, companion, discovery, provisioner, remover
 from .const import (
     CONF_FRIGATE_URL,
     CONF_ONVIF_DEFAULT_PASSWORD,
@@ -61,6 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(TuyaWizardDiscoverView(hass))
         hass.http.register_view(TuyaWizardListView(hass))
         hass.http.register_view(TuyaWizardHomesView(hass))
+        hass.http.register_view(TuyaWizardCloudView(hass))
         hass.http.register_view(TuyaWizardProvisionView(hass))
         hass.http.register_view(TuyaWizardRemoveView(hass))
         hass.http.register_view(TuyaWizardCardTemplatesView(hass))
@@ -352,6 +353,54 @@ class TuyaWizardProvisionView(HomeAssistantView):
 
         await response.write_eof()
         return response
+
+
+class TuyaWizardCloudView(HomeAssistantView):
+    """GET/POST /api/tuya_wizard/cloud — per-device cloud block (needs the Companion)."""
+
+    url = "/api/tuya_wizard/cloud"
+    name = "api:tuya_wizard:cloud"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
+        sync = self._hass.data.get(DOMAIN, {}).get("companion")
+        available = bool(sync and await sync.async_available())
+        return self.json(
+            {"companion": available, "devices": cloud_block.list_devices(self._hass)}
+        )
+
+    async def post(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
+        try:
+            body = await request.json()
+            device_id = str(body["device_id"])
+            action = body.get("action", "block")
+        except Exception:
+            return _error("JSON inválido", "invalid_json", 400)
+        if action == "leak_check":
+            entry = _current_entry(self._hass)
+            creds = _build_creds(entry.data) if entry else None
+            sync = self._hass.data.get(DOMAIN, {}).get("companion")
+            since = ((sync.devices if sync else {}).get(device_id) or {}).get("blocked_since")
+            if not creds or not since:
+                return _error("Bloqueio sem data de início ou sem credenciais", "no_block", 422)
+            try:
+                result = await self._hass.async_add_executor_job(
+                    cloud_block.leak_check, creds, device_id, since
+                )
+            except Exception as exc:
+                _LOGGER.warning("Leak check failed: %s", exc)
+                return _error("Falha ao consultar a nuvem Tuya", "leak_check_failed", 502)
+            return self.json(result)
+        ok, msg = await cloud_block.set_block(
+            self._hass, device_id, action == "block"
+        )
+        return self.json({"ok": ok, "detail": msg}, status_code=200 if ok else 409)
 
 
 class TuyaWizardRemoveView(HomeAssistantView):
