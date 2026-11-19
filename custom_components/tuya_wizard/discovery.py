@@ -38,6 +38,59 @@ def _cloud_devices(creds: TuyaCredentials) -> list[dict[str, Any]]:
     return c.getdevices(include_map=True) or []
 
 
+# DPs that carry long event payloads (base64 pictures/messages) even when the
+# cloud schema types them as "string".
+_LONG_PAYLOAD_CODES = {
+    "alarm_message", "initiative_message", "movement_detect_pic", "doorbell_pic",
+    "alarm_pic", "decibel_upload",
+}
+
+
+def _cloud_client(creds: TuyaCredentials) -> tinytuya.Cloud:
+    return tinytuya.Cloud(
+        apiRegion=creds.region, apiKey=creds.access_id, apiSecret=creds.access_secret
+    )
+
+
+def _device_spaces(c: tinytuya.Cloud) -> dict[str, str]:
+    """Return {device_id: space_id} from the v2 device list (paged)."""
+    result: dict[str, str] = {}
+    last_id = None
+    for _ in range(50):  # hard stop: 50 pages x 20 devices
+        query = {"page_size": 20}
+        if last_id:
+            query["last_id"] = last_id
+        page = c.cloudrequest("/v2.0/cloud/thing/device", query=query).get("result") or []
+        for dev in page:
+            if dev.get("id"):
+                result[dev["id"]] = str(dev.get("bindSpaceId") or "")
+        if len(page) < 20:
+            break
+        last_id = page[-1].get("id")
+    return result
+
+
+def list_homes(creds: TuyaCredentials) -> list[dict[str, Any]]:
+    """Blocking. List the Tuya homes (spaces) that hold the project's devices.
+
+    A cloud project linked to an installer's app account also sees client
+    homes; the user picks one so only that home's devices are listed. Homes
+    the project has no permission to read come back without a name.
+    """
+    c = _cloud_client(creds)
+    counts: dict[str, int] = {}
+    for space in _device_spaces(c).values():
+        counts[space] = counts.get(space, 0) + 1
+    homes = []
+    for space, n in counts.items():
+        name = None
+        if space:
+            res = c.cloudrequest(f"/v2.0/cloud/space/{space}") or {}
+            name = (res.get("result") or {}).get("name")
+        homes.append({"id": space, "name": name, "devices": n, "readable": bool(name)})
+    return sorted(homes, key=lambda h: (not h["readable"], -h["devices"]))
+
+
 def _candidate_versions(hint_version: float | None) -> list[float]:
     if hint_version is None:
         return list(_FALLBACK_PROTOCOL_VERSIONS)
@@ -126,7 +179,15 @@ def _build_dps(
         # status dict may use int or str keys
         value = dps_status.get(dp_id) or dps_status.get(int(dp_id))
         tuya_type = schema.get("type") if schema else None
-        dps.append(map_dp(dp_id, tuya_type=tuya_type, value=value, schema=schema))
+        dp = map_dp(dp_id, tuya_type=tuya_type, value=value, schema=schema)
+        # Raw DPs (camera event pictures/messages, JSON blobs) are often longer
+        # than Home Assistant's 255-char state limit: as LocalTuya sensors they
+        # only produce errors. Camera events come through the Tuya Proxy
+        # Companion instead.
+        code = (schema or {}).get("code", "")
+        if dp.tuya_type == "raw" or code in _LONG_PAYLOAD_CODES:
+            continue
+        dps.append(dp)
 
     return dps
 
@@ -188,7 +249,9 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def stream(hass: HomeAssistant, creds: TuyaCredentials) -> AsyncGenerator[str, None]:
+async def stream(
+    hass: HomeAssistant, creds: TuyaCredentials, home_id: str | None = None
+) -> AsyncGenerator[str, None]:
     """Same discovery as run(), but yields SSE progress as each device resolves.
 
     Cloud device listing + the DP schema batch it carries can be slow with
@@ -202,6 +265,11 @@ async def stream(hass: HomeAssistant, creds: TuyaCredentials) -> AsyncGenerator[
         hass.async_add_executor_job(_cloud_devices, creds),
         hass.async_add_executor_job(_scan_local_ips),
     )
+    if home_id:
+        spaces = await hass.async_add_executor_job(
+            lambda: _device_spaces(_cloud_client(creds))
+        )
+        raw_devices = [d for d in raw_devices if spaces.get(d.get("id", "")) == home_id]
     yield _sse("step", {"step": "cloud_scan", "ok": True, "total": len(raw_devices)})
 
     devices: list[DeviceInfo] = []

@@ -60,6 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(TuyaWizardConfigView(hass))
         hass.http.register_view(TuyaWizardDiscoverView(hass))
         hass.http.register_view(TuyaWizardListView(hass))
+        hass.http.register_view(TuyaWizardHomesView(hass))
         hass.http.register_view(TuyaWizardProvisionView(hass))
         hass.http.register_view(TuyaWizardRemoveView(hass))
         hass.http.register_view(TuyaWizardCardTemplatesView(hass))
@@ -256,11 +257,35 @@ class TuyaWizardDiscoverView(HomeAssistantView):
         )
         await response.prepare(request)
 
-        async for chunk in discovery.stream(self._hass, creds):
+        async for chunk in discovery.stream(self._hass, creds, req.home_id):
             await response.write(chunk.encode())
 
         await response.write_eof()
         return response
+
+
+class TuyaWizardHomesView(HomeAssistantView):
+    """GET /api/tuya_wizard/homes — Tuya homes (spaces) seen by the project."""
+
+    url = "/api/tuya_wizard/homes"
+    name = "api:tuya_wizard:homes"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        if (resp := _admin_required(request)) is not None:
+            return resp
+        entry = _current_entry(self._hass)
+        creds = _build_creds(entry.data) if entry else None
+        if not creds:
+            return _error("Credenciais Tuya não configuradas", "credentials_missing", 422)
+        try:
+            homes = await self._hass.async_add_executor_job(discovery.list_homes, creds)
+        except Exception as exc:  # cloud errors are shown to the user, not raised
+            _LOGGER.warning("Listing Tuya homes failed: %s", exc)
+            return _error("Falha ao consultar as casas na nuvem Tuya", "homes_failed", 502)
+        return self.json(homes)
 
 
 class TuyaWizardListView(HomeAssistantView):

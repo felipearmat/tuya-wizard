@@ -16,6 +16,35 @@ _COMMON_DP_NAMES: dict[str, str] = {
     "47": "Relay Mode",
 }
 
+# Portuguese names by Tuya DP code (cameras, switches, lights, breakers).
+# Falls back to the code in Title Case when the code is not listed.
+CODE_NAMES_PT: dict[str, str] = {
+    "switch": "Liga/desliga", "switch_1": "Liga/desliga", "switch_2": "Liga/desliga 2",
+    "switch_3": "Liga/desliga 3", "switch_led": "Luz", "bright_value": "Brilho",
+    "bright_value_v2": "Brilho", "temp_value": "Temperatura de cor", "temp_value_v2": "Temperatura de cor",
+    "work_mode": "Modo", "colour_data": "Cor", "colour_data_v2": "Cor", "scene_data": "Cena",
+    "countdown": "Temporizador", "countdown_1": "Temporizador", "relay_status": "Comportamento ao ligar",
+    "light_mode": "Modo do LED", "child_lock": "Trava infantil",
+    "cur_power": "Potência", "cur_current": "Corrente", "cur_voltage": "Tensão", "add_ele": "Energia",
+    "temp_current": "Temperatura", "fault": "Falha",
+    "basic_indicator": "LED indicador", "basic_flip": "Imagem espelhada", "basic_osd": "Data e hora na imagem",
+    "basic_private": "Modo privacidade", "motion_sensitivity": "Sensibilidade de movimento",
+    "basic_wdr": "WDR (contraste)", "sd_storge": "Cartão SD (espaço)", "sd_status": "Cartão SD (estado)",
+    "sd_format": "Formatar cartão SD", "sd_format_state": "Formatação do cartão SD",
+    "ptz_stop": "PTZ parar", "ptz_control": "Controle PTZ", "ptz_calibration": "Calibrar PTZ",
+    "ipc_auto_siren": "Sirene automática", "nightvision_mode": "Visão noturna",
+    "event_linkage": "Último evento", "motion_switch": "Detecção de movimento",
+    "doorbell_active": "Campainha", "floodlight_switch": "Luz de iluminação",
+    "decibel_switch": "Detecção de som", "decibel_sensitivity": "Sensibilidade de som",
+    "record_switch": "Gravação no cartão SD", "record_mode": "Modo de gravação",
+    "basic_device_volume": "Volume", "motion_tracking": "Rastreamento automático",
+    "device_restart": "Reiniciar câmera", "zoom_control": "Zoom", "zoom_stop": "Zoom parar",
+    "motion_area_switch": "Zona de movimento", "motion_area": "Área de movimento",
+    "humanoid_filter": "Só pessoas", "ipc_preset_action": "Ir para preset", "ipc_preset_set": "Salvar preset",
+    "ipc_object_outline": "Contorno de objetos", "ipc_audible_alarm": "Alarme sonoro",
+    "basic_anti_flicker": "Anti-oscilação", "onvif_switch": "ONVIF",
+}
+
 _TUYA_TYPE_TO_PLATFORM: dict[str, str] = {
     "bool": "switch",
     "enum": "select",
@@ -73,7 +102,8 @@ def map_dp(
     # Name: cloud schema code beats common name table
     name = _COMMON_DP_NAMES.get(dp_id, f"DP {dp_id}")
     if schema and schema.get("code"):
-        name = schema["code"].replace("_", " ").title()
+        code = schema["code"]
+        name = CODE_NAMES_PT.get(code) or code.replace("_", " ").title()
 
     dp = DpInfo(id=dp_id, name=name, tuya_type=resolved_type, platform=platform)
 

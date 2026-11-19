@@ -60,12 +60,14 @@ async def add_to_localtuya(hass: HomeAssistant, device: DeviceInfo) -> tuple[boo
     if not lt_entries:
         return False, "LocalTuya não instalado — instale primeiro via HACS"
 
-    for entry in lt_entries:
-        if device.device_id in entry.data.get("devices", {}):
-            return True, f"{device.name} já existe no LocalTuya ({entry.title})"
-
-    entry = lt_entries[0]
+    # Re-provisioning updates the existing copy in place (new IP, new local
+    # key after re-pairing, new DP list) instead of skipping or duplicating it.
+    entry = next(
+        (e for e in lt_entries if device.device_id in e.data.get("devices", {})),
+        lt_entries[0],
+    )
     devices: dict = dict(entry.data.get("devices", {}))
+    existed = device.device_id in devices
     devices[device.device_id] = _build_localtuya_device(device)
     hass.config_entries.async_update_entry(
         entry, data={**entry.data, "devices": devices}
@@ -74,7 +76,8 @@ async def add_to_localtuya(hass: HomeAssistant, device: DeviceInfo) -> tuple[boo
     suffix = f" (entry '{entry.title}')" if len(lt_entries) > 1 else ""
     try:
         await hass.config_entries.async_reload(entry.entry_id)
-        return True, f"Adicionado ao LocalTuya: {device.name}{suffix}"
+        verb = "Atualizado no" if existed else "Adicionado ao"
+        return True, f"{verb} LocalTuya: {device.name}{suffix}"
     except Exception as exc:
         _LOGGER.warning("LocalTuya reload failed: %s", exc)
         return (

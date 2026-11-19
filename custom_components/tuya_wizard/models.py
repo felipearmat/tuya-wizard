@@ -65,7 +65,11 @@ class CardTemplate(BaseModel):
 
 
 class DiscoverRequest(BaseModel):
-    credentials: TuyaCredentials
+    # Optional: when omitted, the credentials saved in the config entry are used,
+    # so the page does not have to send the secret back on every scan.
+    credentials: Optional[TuyaCredentials] = None
+    # Tuya "home" (space) to list; None = every device the cloud project sees.
+    home_id: Optional[str] = None
 
 
 class ProvisionRequest(BaseModel):

@@ -143,7 +143,7 @@
 </head>
 <body>
 
-<div id="version-badge">Tuya Wizard v0.3.0</div>
+<div id="version-badge">Tuya Wizard v0.5.0</div>
 
 <div id="op-banner">
   <span class="spin">⏳</span>&nbsp;
@@ -202,6 +202,11 @@
         </button>
       </div>
       <p class="hint">A senha ONVIF é auto-preenchida em dispositivos das categorias <code>sp</code>, <code>ipc</code> e <code>vcs</code>. Para ajustar por dispositivo, clique na linha para expandir os detalhes. Se o Frigate estiver instalado, o áudio+vídeo da câmera é configurado nele automaticamente ao provisionar.</p>
+      <div class="field" style="margin-top:8px">
+        <label for="home">Casa (Tuya)</label>
+        <select id="home"><option value="">Carregando casas…</option></select>
+      </div>
+      <p class="hint">Mostra só os aparelhos da casa escolhida. Contas de instalador também enxergam casas de clientes: escolha sempre a casa certa.</p>
       <div class="actions">
         <button class="btn btn-primary" id="btn-discover" onclick="doDiscover()">
           🔍 Descobrir Dispositivos
@@ -345,6 +350,28 @@ async function loadConfig() {
     if (d.onvif_default_password) $('onvif-default-pwd').value = d.onvif_default_password;
     if (d.frigate_url)            $('frigate-url').value = d.frigate_url;
   } catch (e) { /* silent */ }
+  loadHomes();
+}
+
+// Fill the home (Tuya space) selector; remembers the last choice locally.
+async function loadHomes() {
+  const sel = $('home');
+  try {
+    const r = await apiFetch('/homes');
+    if (!r.ok) { sel.innerHTML = '<option value="">Todas as casas (não foi possível listar)</option>'; return; }
+    const homes = await r.json();
+    let saved = '';
+    try { saved = localStorage.getItem('tuya_wizard_home') || ''; } catch (e) { /* ignore */ }
+    sel.innerHTML = homes.map(h => {
+      const label = h.readable ? h.name : `Casa sem permissão de leitura (${h.id || 'sem id'})`;
+      return `<option value="${h.id}">${label} · ${h.devices} aparelho(s)</option>`;
+    }).join('') + '<option value="">Todas as casas</option>';
+    const first = homes.find(h => h.readable);
+    sel.value = homes.some(h => h.id === saved) ? saved : (first ? first.id : '');
+  } catch (e) {
+    sel.innerHTML = '<option value="">Todas as casas (não foi possível listar)</option>';
+  }
+  sel.onchange = () => { try { localStorage.setItem('tuya_wizard_home', sel.value); } catch (e) { /* ignore */ } };
 }
 
 async function saveConfig() {
@@ -443,11 +470,7 @@ async function doDiscover() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        credentials: {
-          access_id:     $('access-id').value.trim(),
-          access_secret: $('access-secret').value.trim(),
-          region:        $('region').value,
-        },
+        home_id: $('home').value || null,
       }),
     });
 
