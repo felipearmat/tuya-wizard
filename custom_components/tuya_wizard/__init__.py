@@ -35,7 +35,7 @@ from .models import (
 
 _LOGGER = logging.getLogger(__name__)
 _STATIC = Path(__file__).parent / "static"
-PLATFORMS: list[str] = []
+PLATFORMS: list[str] = ["binary_sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -88,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await sync.async_start()
         domain_data["companion"] = sync
 
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
 
@@ -98,6 +99,7 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     async_remove_panel(hass, "tuya-wizard")
     hass.data[DOMAIN].pop("entry", None)
     return True

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- Motion binary sensor per camera registered in the Tuya Proxy Companion
+  (`binary_sensor.movimento_da_camera_<slug>`, device class motion): polls
+  Frigate's event API every 10 s for the Companion's manual "motion" events and
+  stays on for 30 s after each one. Attributes: last event, events today, source.
+- Unit tests (`tests/test_units.py`, stdlib unittest; pytest-compatible) for DP
+  mapping, discovery filters, home listing, Companion sync comparison and the
+  cloud leak check; see `TESTING.md`.
+
 ## 0.6.0
 
 - New "Nuvem" (cloud) tab: per-device cloud block through the Tuya Proxy
