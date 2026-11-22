@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from .const import DOMAIN
+
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -66,4 +68,13 @@ async def run(hass: HomeAssistant, device_id: str) -> tuple[bool, str]:
             await _cleanup_registries(hass, device_id)
         except Exception as exc:
             _LOGGER.warning("Registry cleanup failed: %s", exc)
+        # A camera registered in the Tuya Proxy Companion must leave it too, otherwise the
+        # Companion keeps proxying/blocking a device that no longer exists in Home Assistant.
+        sync = hass.data.get(DOMAIN, {}).get("companion")
+        if sync is not None and device_id in getattr(sync, "devices", {}):
+            try:
+                await sync.async_remove(device_id)
+                msg += " · removida do Tuya Proxy Companion"
+            except Exception as exc:
+                _LOGGER.warning("Companion removal failed: %s", exc)
     return ok, msg

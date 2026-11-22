@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.3
+
+- Removing a device now also removes it from the Tuya Proxy Companion when it was
+  registered there (cameras), so the Companion stops proxying/blocking a device
+  that no longer exists in Home Assistant.
+
 ## 0.7.2
 
 - The home list now comes from the credentials typed in the form ("Carregar
