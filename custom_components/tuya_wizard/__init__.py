@@ -289,28 +289,56 @@ class TuyaWizardHomesView(HomeAssistantView):
         except Exception as exc:  # cloud errors are shown to the user, not raised
             _LOGGER.warning("Listing Tuya homes failed: %s", exc)
             return _error("Falha ao consultar as casas na nuvem Tuya", "homes_failed", 502)
-        # The default home is stored server-side so every browser starts on the same home;
-        # installer accounts also see their clients' homes, which must not be picked by accident.
-        prefs = await _prefs_store(self._hass).async_load() or {}
-        default = prefs.get("home_id")
-        for h in homes:
-            h["default"] = bool(default) and h.get("id") == default
-        homes.sort(key=lambda h: (not h["default"], not h.get("readable"), -int(h.get("devices") or 0)))
-        return self.json(homes)
+        return self.json(await _homes_with_default(self._hass, creds, homes))
 
     async def post(self, request: web.Request) -> web.Response:
-        """Save the default home: {"home_id": "<space id>"} (empty/null clears it)."""
+        """Two uses:
+        {"credentials": {access_id, access_secret, region}} -> list the homes of THOSE credentials
+            (the ones typed in the form; empty -> the saved ones), with the account's last home marked;
+        {"home_id": "<space id>", "access_id": "..."} -> remember the last home chosen for that account."""
         if (resp := _admin_required(request)) is not None:
             return resp
         try:
-            body = await request.json()
+            body = await request.json() or {}
         except ValueError:
             return _error("JSON inválido", "invalid_json", 400)
-        home_id = (body or {}).get("home_id") or None
-        if home_id is not None and not isinstance(home_id, str):
-            return _error("home_id inválido", "invalid_home", 400)
-        await _prefs_store(self._hass).async_save({"home_id": home_id})
+        entry = _current_entry(self._hass)
+        saved = _build_creds(entry.data) if entry else None
+        if "credentials" in body:
+            c = body.get("credentials") or {}
+            if c.get("access_id") and c.get("access_secret"):
+                creds = TuyaCredentials(access_id=c["access_id"], access_secret=c["access_secret"],
+                                        region=c.get("region") or "us")
+            else:
+                creds = saved
+            if not creds:
+                return _error("Informe o Client ID e o Client Secret", "credentials_missing", 422)
+            try:
+                homes = await self._hass.async_add_executor_job(discovery.list_homes, creds)
+            except Exception as exc:  # cloud errors are shown to the user, not raised
+                _LOGGER.warning("Listing Tuya homes failed: %s", exc)
+                return _error("Falha ao consultar as casas na nuvem Tuya (confira as credenciais)", "homes_failed", 502)
+            return self.json(await _homes_with_default(self._hass, creds, homes))
+        home_id = body.get("home_id") or None
+        access_id = body.get("access_id") or (saved.access_id if saved else None)
+        if (home_id is not None and not isinstance(home_id, str)) or not access_id:
+            return _error("home_id ou access_id inválido", "invalid_home", 400)
+        store = _prefs_store(self._hass)
+        prefs = await store.async_load() or {}
+        prefs.setdefault("ultima_casa", {})[access_id] = home_id
+        prefs.pop("home_id", None)
+        await store.async_save(prefs)
         return self.json({"ok": True, "home_id": home_id})
+
+
+async def _homes_with_default(hass: HomeAssistant, creds: TuyaCredentials, homes: list[dict]) -> list[dict]:
+    """Mark the last home chosen for this account (per access_id) and put it first."""
+    prefs = await _prefs_store(hass).async_load() or {}
+    last = (prefs.get("ultima_casa") or {}).get(creds.access_id) or prefs.get("home_id")  # "home_id": 0.7.1 format
+    for h in homes:
+        h["default"] = bool(last) and h.get("id") == last
+    homes.sort(key=lambda h: (not h["default"], not h.get("readable"), -int(h.get("devices") or 0)))
+    return homes
 
 
 def _prefs_store(hass: HomeAssistant) -> Store:

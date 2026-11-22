@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.2
+
+- The home list now comes from the credentials typed in the form ("Carregar
+  casas" button; `POST /api/tuya_wizard/homes` with `credentials`), so the home
+  is chosen after the key and secret. Changing the credentials asks to reload
+  the list; discovery uses the same credentials and requires a loaded home.
+- The last home used is remembered per account (Client ID) on the server and
+  comes pre-selected ("última usada"); no more global default.
+- Wrong credentials show "Nenhuma casa encontrada" instead of an empty list.
+
 ## 0.7.1
 
 - Default Tuya home saved on the server (`GET/POST /api/tuya_wizard/homes`,

@@ -205,9 +205,12 @@
       <p class="hint">A senha ONVIF é auto-preenchida em dispositivos das categorias <code>sp</code>, <code>ipc</code> e <code>vcs</code>. Para ajustar por dispositivo, clique na linha para expandir os detalhes. Se o Frigate estiver instalado, o áudio+vídeo da câmera é configurado nele automaticamente ao provisionar.</p>
       <div class="field" style="margin-top:8px">
         <label for="home">Casa (Tuya)</label>
-        <select id="home"><option value="">Carregando casas…</option></select>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="home" style="flex:1"><option value="" data-vazio="1">Informe as credenciais e clique em "Carregar casas"</option></select>
+          <button class="btn btn-secondary btn-sm" id="btn-homes" onclick="loadHomes()">🏠 Carregar casas</button>
+        </div>
       </div>
-      <p class="hint">Mostra só os aparelhos da casa escolhida. Contas de instalador também enxergam casas de clientes: escolha sempre a casa certa.</p>
+      <p class="hint">As casas vêm da conta das credenciais acima. A busca mostra só os aparelhos da casa escolhida, e a última casa usada com cada conta fica lembrada. Contas de instalador também enxergam casas de clientes: escolha sempre a casa certa.</p>
       <div class="actions">
         <button class="btn btn-primary" id="btn-discover" onclick="doDiscover()">
           🔍 Descobrir Dispositivos
@@ -427,42 +430,59 @@ async function loadConfig() {
     if (d.frigate_url)            $('frigate-url').value = d.frigate_url;
   } catch (e) { /* silent */ }
   loadHomes();
+  ['access-id', 'access-secret', 'region'].forEach(id => $(id).addEventListener('change', homesStale));
 }
 
-// Fill the home (Tuya space) selector. The default home is saved on the server, so every
-// browser starts on the same home (installer accounts also see their clients' homes).
+// Fill the home (Tuya space) selector from the credentials typed in the form (empty = saved ones).
+// The last home used with each account is remembered on the server and comes pre-selected.
+function formCredentials() {
+  return { access_id: $('access-id').value.trim(), access_secret: $('access-secret').value.trim(), region: $('region').value };
+}
+function homesStale() {
+  $('home').innerHTML = '<option value="" data-vazio="1">Credenciais mudaram: clique em "Carregar casas"</option>';
+}
 async function loadHomes() {
   const sel = $('home');
   let prev = '';
+  sel.innerHTML = '<option value="" data-vazio="1">Carregando casas…</option>';
   try {
-    const r = await apiFetch('/homes');
-    if (!r.ok) { sel.innerHTML = '<option value="">Todas as casas (não foi possível listar)</option>'; return; }
+    const r = await apiFetch('/homes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ credentials: formCredentials() }) });
+    if (!r.ok) {
+      let msg = 'não foi possível listar';
+      try { msg = (await r.json()).error || msg; } catch (e) { /* ignore */ }
+      sel.innerHTML = `<option value="" data-vazio="1">${msg}</option>`; return;
+    }
     const homes = await r.json();
-    let saved = '';
-    try { saved = localStorage.getItem('tuya_wizard_home') || ''; } catch (e) { /* ignore */ }
+    if (!homes.length) {
+      sel.innerHTML = '<option value="" data-vazio="1">Nenhuma casa encontrada: confira o Client ID, o Client Secret e a região</option>'; return;
+    }
     sel.innerHTML = homes.map(h => {
       const label = h.readable ? h.name : `Casa sem permissão de leitura (${h.id || 'sem id'})`;
-      return `<option value="${h.id}">${label} · ${h.devices} aparelho(s)${h.default ? ' · padrão' : ''}</option>`;
+      return `<option value="${h.id}">${label} · ${h.devices} aparelho(s)${h.default ? ' · última usada' : ''}</option>`;
     }).join('') + '<option value="">Todas as casas (inclui as de clientes)</option>';
     const def = homes.find(h => h.default);
     const first = homes.find(h => h.readable);
-    sel.value = def ? def.id : (homes.some(h => h.id === saved) ? saved : (first ? first.id : ''));
+    sel.value = def ? def.id : (first ? first.id : '');
     prev = sel.value;
+    if (sel.value) rememberHome(sel.value);
   } catch (e) {
-    sel.innerHTML = '<option value="">Todas as casas (não foi possível listar)</option>';
+    sel.innerHTML = '<option value="" data-vazio="1">não foi possível listar as casas</option>';
   }
-  sel.onchange = async () => {
-    const name = sel.options[sel.selectedIndex].text.split(' · ')[0];
-    if (!sel.value) {
-      if (!confirm('Mostrar os aparelhos de TODAS as casas, inclusive as de clientes? Cuidado para não cadastrar aparelho de outra casa.')) { sel.value = prev; return; }
-    } else if (!sel.options[sel.selectedIndex].text.includes('· padrão')) {
-      if (confirm(`Usar "${name}" como casa padrão daqui para frente (em qualquer navegador)?`)) {
-        await apiFetch('/homes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ home_id: sel.value }) });
-      }
+  sel.onchange = () => {
+    if (!sel.value && !confirm('Mostrar os aparelhos de TODAS as casas, inclusive as de clientes? Cuidado para não cadastrar aparelho de outra casa.')) {
+      sel.value = prev; return;
     }
     prev = sel.value;
-    try { localStorage.setItem('tuya_wizard_home', sel.value); } catch (e) { /* ignore */ }
+    if (sel.value) rememberHome(sel.value);
   };
+}
+async function rememberHome(homeId) {
+  const c = formCredentials();
+  try {
+    await apiFetch('/homes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ home_id: homeId, access_id: c.access_id || null }) });
+  } catch (e) { /* ignore */ }
 }
 
 async function saveConfig() {
@@ -546,6 +566,10 @@ async function readSSE(response, onEvent) {
 
 async function doDiscover() {
   if (busy) return;
+  const hs = $('home');
+  if (hs.options[hs.selectedIndex] && hs.options[hs.selectedIndex].dataset.vazio) {
+    alert('Carregue e escolha a casa antes de descobrir os aparelhos.'); return;
+  }
   setBusy(true);
   $('btn-discover').disabled = true;
   $('btn-rediscover').disabled = true;
@@ -561,6 +585,7 @@ async function doDiscover() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        credentials: formCredentials().access_id ? formCredentials() : null,
         home_id: $('home').value || null,
       }),
     });
