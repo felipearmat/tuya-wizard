@@ -82,10 +82,12 @@ def _ffprobe_codec_types(url: str) -> set[str]:
                 url,
             ],
             capture_output=True,
-            text=True,
             timeout=10,
         )
-        data = json.loads(result.stdout or "{}")
+        # Some cameras (e.g. EKAZA T5293) send non-UTF-8 bytes in the SDP that ffprobe echoes on
+        # stderr; text=True made subprocess raise UnicodeDecodeError and the probe wrongly
+        # reported "no stream". Decode leniently and only parse stdout (the JSON).
+        data = json.loads(result.stdout.decode("utf-8", "replace") or "{}")
         return {s.get("codec_type") for s in data.get("streams", [])}
     except Exception as exc:
         _LOGGER.debug("ffprobe failed for %s: %s", url, exc)
@@ -131,7 +133,14 @@ async def configure_camera(
     session = async_get_clientsession(hass)
     try:
         async with session.get(f"{frigate_url}/api/config/raw") as resp:
-            raw_text = await resp.json()
+            # Frigate 0.18 answers a JSON-encoded string but labels it text/plain; older versions
+            # used application/json. Accept both (and plain YAML) instead of trusting the header.
+            body = await resp.text()
+            try:
+                decoded = json.loads(body)
+                raw_text = decoded if isinstance(decoded, str) else body
+            except ValueError:
+                raw_text = body
     except Exception as exc:
         return False, f"Falha ao ler config do Frigate: {exc}"
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.4
+
+- Frigate step: the RTSP probe no longer fails on cameras that send non-UTF-8
+  bytes in the SDP (ffprobe output is decoded leniently; before, the decode
+  error made every candidate look like "no stream").
+- Frigate step: reading `/api/config/raw` accepts the JSON-encoded string that
+  Frigate 0.18 serves as `text/plain` (and plain YAML), instead of requiring an
+  `application/json` content type.
+
 ## 0.7.3
 
 - Removing a device now also removes it from the Tuya Proxy Companion when it was
