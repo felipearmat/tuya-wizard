@@ -14,6 +14,7 @@ from homeassistant.components.frontend import (
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 
 from . import card_store, cloud_block, companion, discovery, provisioner, remover
 from .const import (
@@ -288,7 +289,33 @@ class TuyaWizardHomesView(HomeAssistantView):
         except Exception as exc:  # cloud errors are shown to the user, not raised
             _LOGGER.warning("Listing Tuya homes failed: %s", exc)
             return _error("Falha ao consultar as casas na nuvem Tuya", "homes_failed", 502)
+        # The default home is stored server-side so every browser starts on the same home;
+        # installer accounts also see their clients' homes, which must not be picked by accident.
+        prefs = await _prefs_store(self._hass).async_load() or {}
+        default = prefs.get("home_id")
+        for h in homes:
+            h["default"] = bool(default) and h.get("id") == default
+        homes.sort(key=lambda h: (not h["default"], not h.get("readable"), -int(h.get("devices") or 0)))
         return self.json(homes)
+
+    async def post(self, request: web.Request) -> web.Response:
+        """Save the default home: {"home_id": "<space id>"} (empty/null clears it)."""
+        if (resp := _admin_required(request)) is not None:
+            return resp
+        try:
+            body = await request.json()
+        except ValueError:
+            return _error("JSON inválido", "invalid_json", 400)
+        home_id = (body or {}).get("home_id") or None
+        if home_id is not None and not isinstance(home_id, str):
+            return _error("home_id inválido", "invalid_home", 400)
+        await _prefs_store(self._hass).async_save({"home_id": home_id})
+        return self.json({"ok": True, "home_id": home_id})
+
+
+def _prefs_store(hass: HomeAssistant) -> Store:
+    """Small private store for user preferences of the wizard (default home)."""
+    return Store(hass, 1, f"{DOMAIN}.prefs", private=True)
 
 
 class TuyaWizardListView(HomeAssistantView):

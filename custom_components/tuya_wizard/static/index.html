@@ -429,9 +429,11 @@ async function loadConfig() {
   loadHomes();
 }
 
-// Fill the home (Tuya space) selector; remembers the last choice locally.
+// Fill the home (Tuya space) selector. The default home is saved on the server, so every
+// browser starts on the same home (installer accounts also see their clients' homes).
 async function loadHomes() {
   const sel = $('home');
+  let prev = '';
   try {
     const r = await apiFetch('/homes');
     if (!r.ok) { sel.innerHTML = '<option value="">Todas as casas (não foi possível listar)</option>'; return; }
@@ -440,14 +442,27 @@ async function loadHomes() {
     try { saved = localStorage.getItem('tuya_wizard_home') || ''; } catch (e) { /* ignore */ }
     sel.innerHTML = homes.map(h => {
       const label = h.readable ? h.name : `Casa sem permissão de leitura (${h.id || 'sem id'})`;
-      return `<option value="${h.id}">${label} · ${h.devices} aparelho(s)</option>`;
-    }).join('') + '<option value="">Todas as casas</option>';
+      return `<option value="${h.id}">${label} · ${h.devices} aparelho(s)${h.default ? ' · padrão' : ''}</option>`;
+    }).join('') + '<option value="">Todas as casas (inclui as de clientes)</option>';
+    const def = homes.find(h => h.default);
     const first = homes.find(h => h.readable);
-    sel.value = homes.some(h => h.id === saved) ? saved : (first ? first.id : '');
+    sel.value = def ? def.id : (homes.some(h => h.id === saved) ? saved : (first ? first.id : ''));
+    prev = sel.value;
   } catch (e) {
     sel.innerHTML = '<option value="">Todas as casas (não foi possível listar)</option>';
   }
-  sel.onchange = () => { try { localStorage.setItem('tuya_wizard_home', sel.value); } catch (e) { /* ignore */ } };
+  sel.onchange = async () => {
+    const name = sel.options[sel.selectedIndex].text.split(' · ')[0];
+    if (!sel.value) {
+      if (!confirm('Mostrar os aparelhos de TODAS as casas, inclusive as de clientes? Cuidado para não cadastrar aparelho de outra casa.')) { sel.value = prev; return; }
+    } else if (!sel.options[sel.selectedIndex].text.includes('· padrão')) {
+      if (confirm(`Usar "${name}" como casa padrão daqui para frente (em qualquer navegador)?`)) {
+        await apiFetch('/homes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ home_id: sel.value }) });
+      }
+    }
+    prev = sel.value;
+    try { localStorage.setItem('tuya_wizard_home', sel.value); } catch (e) { /* ignore */ }
+  };
 }
 
 async function saveConfig() {

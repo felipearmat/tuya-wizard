@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1
+
+- Default Tuya home saved on the server (`GET/POST /api/tuya_wizard/homes`,
+  private store `tuya_wizard.prefs`): every browser starts on the same home, the
+  default comes first and is marked "padrão". Choosing another home asks whether
+  it becomes the default; "Todas as casas" warns that installer accounts also see
+  their clients' homes.
+
 ## 0.7.0
 
 - Motion binary sensor per camera registered in the Tuya Proxy Companion
