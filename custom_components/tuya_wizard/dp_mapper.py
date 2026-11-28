@@ -43,6 +43,28 @@ CODE_NAMES_PT: dict[str, str] = {
     "humanoid_filter": "Só pessoas", "ipc_preset_action": "Ir para preset", "ipc_preset_set": "Salvar preset",
     "ipc_object_outline": "Contorno de objetos", "ipc_audible_alarm": "Alarme sonoro",
     "basic_anti_flicker": "Anti-oscilação", "onvif_switch": "ONVIF",
+    # Energy meters / smart breakers (added 2026-11-27 with the model catalog)
+    "total_forward_energy": "Energia total", "forward_energy_total": "Energia total",
+    "phase_a": "Fase A (tensão, corrente, potência)", "phase_b": "Fase B", "phase_c": "Fase C",
+    "leakage_current": "Corrente de fuga", "supply_frequency": "Frequência da rede",
+    "power_factor": "Fator de potência", "sync_dp_info": "Pedir leitura agora",
+    "cur_voltage": "Tensão", "cur_current": "Corrente", "fault_record": "Registro de falhas",
+    "over_current_protect": "Proteção de sobrecorrente", "over_voltage_protect": "Proteção de sobretensão",
+    "under_voltage_protect": "Proteção de subtensão", "leakage_protect": "Proteção de fuga",
+    "temp_protect": "Proteção de temperatura", "relay_status": "Estado ao religar a energia",
+    "clear_energy": "Zerar energia", "alarm_set_1": "Alarmes 1", "alarm_set_2": "Alarmes 2",
+    "add_ele": "Energia (contador curto)", "cycle_time": "Agenda cíclica",
+    "switch_prepayment": "Modo pré-pago", "balance_energy": "Saldo de energia (pré-pago)",
+    "charge_energy": "Recarga de energia", "breaker_id": "Identificação do disjuntor",
+    "timer_on": "Temporizador para ligar", "energy_mode": "Modo de energia",
+    "over_vol_protect_time": "Sobretensão: tempo para desarmar",
+    "over_vol_recovery_time": "Sobretensão: tempo para religar",
+    "over_cul": "Limite de corrente", "over_vol": "Limite de tensão",
+    "loop_countdown": "Temporizador em ciclo", "insufficient_threshold": "Aviso de saldo baixo",
+    "custom_raw": "Dados próprios do fabricante", "product_class": "Classe do produto",
+    "notice_display": "Avisos exibidos", "oc_protection_delay": "Sobrecorrente: tempo para desarmar",
+    "oc_recovery_delay": "Sobrecorrente: tempo para religar", "oc_count": "Sobrecorrente: religamentos",
+    "leakage_recovery_delay": "Fuga: tempo para religar", "leakage_count": "Fuga: religamentos",
 }
 
 _TUYA_TYPE_TO_PLATFORM: dict[str, str] = {
@@ -104,7 +126,14 @@ def map_dp(
     if schema and schema.get("code"):
         code = schema["code"]
         name = CODE_NAMES_PT.get(code) or code.replace("_", " ").title()
+    # A reviewed name from the model catalog (catalogo.py) beats everything.
+    if schema and schema.get("nome"):
+        name = schema["nome"]
 
+    # Read-only DPs (catalog "acesso": "ro") are measurements, not controls:
+    # an energy counter must not become an editable number.
+    if schema and schema.get("acesso") == "ro" and platform in ("number", "select", "switch"):
+        platform = "sensor"
     dp = DpInfo(id=dp_id, name=name, tuya_type=resolved_type, platform=platform)
 
     if resolved_type == "enum" and schema:
@@ -124,6 +153,16 @@ def map_dp(
             dp.min_value = float(raw_values.get("min", 0))
             dp.max_value = float(raw_values.get("max", 100))
             dp.step_size = float(raw_values.get("step", 1))
+            try:
+                dp.scale = int(raw_values.get("scale") or 0)
+            except (TypeError, ValueError):
+                dp.scale = 0
+            dp.unit = str(raw_values.get("unit") or "")
+            # "temp_value" means colour temperature on lights but a real
+            # temperature on breakers/sensors: the unit tells them apart.
+            if (schema.get("code") == "temp_value" and not schema.get("nome")
+                    and dp.unit in ("℃", "°C", "℉", "°F")):
+                dp.name = "Temperatura"
 
     return dp
 

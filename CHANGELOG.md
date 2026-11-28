@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.5
+
+- Model catalog (`catalogo.py`): each Tuya product (product_id) gets one JSON file with the full
+  thing model (`/v2.0/cloud/thing/<device_id>/model`), so vendor DPs that the short cloud
+  specification hides (raw phase data, unnamed "DP 1xx") are described with code, type, unit,
+  scale and range. Known products are read from the file (no cloud call); unknown ones are fetched
+  once, probed on the LAN and saved with `"revisado": false` for the user to review names.
+  Files live in `<config>/tuya_wizard/modelos/`; bundled reviewed files in `modelos/`.
+- Scale and unit are passed to LocalTuya (`scaling` = 10^-scale), so energy and power readings
+  come out in the right magnitude.
+- Values `0` and `False` are no longer dropped when reading the device locally.
+- A `temp_value` DP with a °C unit is named "Temperatura" (not "Temperatura de cor").
+- Read-only DPs are created as sensors only.
+
 ## 0.7.4
 
 - Frigate step: the RTSP probe no longer fails on cameras that send non-UTF-8

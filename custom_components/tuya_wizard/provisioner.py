@@ -33,7 +33,20 @@ def _build_entity(dp: DpInfo) -> dict:
         ent["min_value"] = dp.min_value
         ent["max_value"] = dp.max_value
         ent["step_size"] = dp.step_size
+    if dp.platform in ("sensor", "number"):
+        # Without this a 0.01 kWh counter showed 1523 instead of 15.23 kWh.
+        # LocalTuya multiplies the raw value (and number min/max) by "scaling".
+        if dp.scale:
+            ent["scaling"] = 10 ** -dp.scale
+        unit = _UNITS.get(dp.unit.lower(), dp.unit) if dp.unit else ""
+        if unit:
+            ent["unit_of_measurement"] = unit
     return ent
+
+
+# Tuya unit spellings -> Home Assistant units.
+_UNITS = {"kw·h": "kWh", "k·wh": "kWh", "kwh": "kWh", "℃": "°C", "℉": "°F", "s": "s", "w": "W", "v": "V",
+          "a": "A", "ma": "mA", "hz": "Hz", "%": "%"}
 
 
 def _build_localtuya_device(device: DeviceInfo) -> dict:

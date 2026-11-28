@@ -23,6 +23,9 @@ class DpInfo(BaseModel):
     min_value: float = 0.0
     max_value: float = 100.0
     step_size: float = 1.0
+    # Tuya integer DPs carry a decimal scale (value / 10**scale) and a unit.
+    scale: int = 0
+    unit: str = ""
     is_passive: bool = False
 
 

@@ -12,10 +12,16 @@ from typing import Any
 import tinytuya
 from homeassistant.core import HomeAssistant
 
-from .dp_mapper import map_dp
+from . import catalogo
+from .dp_mapper import CODE_NAMES_PT, map_dp
 from .models import DeviceInfo, DpInfo, TuyaCredentials
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def catalog_dir(hass: HomeAssistant) -> str:
+    """Where the model catalog lives: <config>/tuya_wizard/modelos."""
+    return hass.config.path("tuya_wizard", "modelos")
 
 # Try the device's broadcasted version first (if known), then fall back
 # through the protocol versions Tuya devices commonly speak.
@@ -177,7 +183,8 @@ def _build_dps(
     for dp_id in sorted(all_ids, key=int):
         schema = schema_map.get(dp_id)
         # status dict may use int or str keys
-        value = dps_status.get(dp_id) or dps_status.get(int(dp_id))
+        # "or" here dropped real 0/False values (then the type was guessed wrong).
+        value = dps_status[dp_id] if dp_id in dps_status else dps_status.get(int(dp_id))
         tuya_type = schema.get("type") if schema else None
         dp = map_dp(dp_id, tuya_type=tuya_type, value=value, schema=schema)
         # Raw DPs (camera event pictures/messages, JSON blobs) are often longer
@@ -192,9 +199,45 @@ def _build_dps(
     return dps
 
 
+def _catalog_schema(
+    raw: dict,
+    dps_status: dict[str, object],
+    ip: str | None,
+    version: float | None,
+    catalog_dir: str | None,
+    creds: TuyaCredentials | None,
+) -> dict[str, dict]:
+    """Schema from the model catalog; an unknown product is fetched once and saved.
+
+    Best effort: any failure just falls back to the short cloud mapping.
+    """
+    product_id = raw.get("product_id") or ""
+    if not catalog_dir or not product_id:
+        return {}
+    ficha = catalogo.carregar(catalog_dir, product_id)
+    if ficha is None and creds is not None:
+        try:
+            model = catalogo.modelo_da_nuvem(_cloud_client(creds), raw.get("id", ""))
+            if model:
+                dev = None
+                if ip and version:
+                    dev = tinytuya.Device(raw.get("id", ""), ip, raw.get("key", ""), version=version)
+                    dev.set_socketTimeout(3)
+                sonda = catalogo.sondar_local(dev, model, dps_status)
+                ficha = catalogo.montar_ficha(raw, model, sonda, CODE_NAMES_PT)
+                catalogo.salvar(catalog_dir, ficha)
+                _LOGGER.info("Model catalog: new product %s saved (%d DPs)", product_id, len(model))
+        except Exception as exc:
+            _LOGGER.warning("Model catalog: could not build %s: %s", product_id, exc)
+            ficha = None
+    return catalogo.schema_da_ficha(ficha) if ficha else {}
+
+
 def _build_device(
     raw: dict,
     local_scan: dict[str, dict[str, object]],
+    catalog_dir: str | None = None,
+    creds: TuyaCredentials | None = None,
 ) -> DeviceInfo:
     device_id = raw.get("id", "")
     name = raw.get("name", device_id)
@@ -205,9 +248,14 @@ def _build_device(
     ip: str | None = raw.get("ip") or scan_info.get("ip") or None
     hint_version = scan_info.get("version")
 
-    schema_map = raw.get("mapping") or {}
+    schema_map = dict(raw.get("mapping") or {})
     dps_status, detected_version = (
         _local_status(ip, device_id, local_key, hint_version) if ip else ({}, None)
+    )
+    # The catalog's full model fills the DPs the short mapping leaves out
+    # (vendor DPs came in as nameless "DP 1xx") and carries reviewed names.
+    schema_map.update(
+        _catalog_schema(raw, dps_status, ip, detected_version or hint_version, catalog_dir, creds)
     )
     dps = _build_dps(schema_map, dps_status)
 
@@ -238,7 +286,9 @@ async def run(hass: HomeAssistant, creds: TuyaCredentials) -> list[DeviceInfo]:
     return list(
         await asyncio.gather(
             *(
-                hass.async_add_executor_job(_build_device, raw, local_scan)
+                hass.async_add_executor_job(
+            _build_device, raw, local_scan, catalog_dir(hass), creds
+        )
                 for raw in raw_devices
             )
         )
@@ -274,7 +324,9 @@ async def stream(
 
     devices: list[DeviceInfo] = []
     tasks = [
-        hass.async_add_executor_job(_build_device, raw, local_scan)
+        hass.async_add_executor_job(
+            _build_device, raw, local_scan, catalog_dir(hass), creds
+        )
         for raw in raw_devices
     ]
     for task in asyncio.as_completed(tasks):
